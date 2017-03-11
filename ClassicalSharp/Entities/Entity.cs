@@ -1,4 +1,4 @@
-﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
+// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
 using ClassicalSharp.Model;
 using OpenTK;
@@ -35,8 +35,10 @@ namespace ClassicalSharp.Entities {
 		public short Health = 20;
 		
 		public Vector3 Position;
+		public Vector3 OldPosition;
 		public Vector3 Velocity;
 		public Vector3 OldVelocity;
+		public float FallDistance;
 		public float HeadX, HeadY, RotX, RotY, RotZ;
 		
 		protected Game game;
