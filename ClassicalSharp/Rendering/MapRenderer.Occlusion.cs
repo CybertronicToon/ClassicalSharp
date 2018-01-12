@@ -11,9 +11,9 @@ namespace ClassicalSharp.Renderers {
 		void SimpleOcclusionCulling() { // TODO: still broken
 			Vector3 p = game.LocalPlayer.EyePosition;
 			Vector3I mapLoc = Vector3I.Floor(p);
-			Utils.Clamp(ref mapLoc.X, 0, game.World.Width - 1);
-			Utils.Clamp(ref mapLoc.Y, 0, game.World.Height - 1);
-			Utils.Clamp(ref mapLoc.Z, 0, game.World.Length- 1);
+			Utils.Clamp(ref mapLoc.X, 0, game.World.MaxX);
+			Utils.Clamp(ref mapLoc.Y, 0, game.World.MaxY);
+			Utils.Clamp(ref mapLoc.Z, 0, game.World.MaxZ);
 			
 			int cx = mapLoc.X >> 4;
 			int cy = mapLoc.Y >> 4;
@@ -120,7 +120,7 @@ namespace ClassicalSharp.Renderers {
 		}
 		const byte flagX = 1, flagZ = 2, flagY = 4;
 		
-		public void DebugPickedPos() {
+		void DebugPickedPos() {
 			return;
 			if (game.SelectedPos.Valid) {
 				Vector3I p = game.SelectedPos.BlockPos;

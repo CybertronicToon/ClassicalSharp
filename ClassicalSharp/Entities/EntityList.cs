@@ -7,7 +7,7 @@ using ClassicalSharp.Physics;
 
 namespace ClassicalSharp.Entities {
 
-	public enum NameMode { NoNames, HoveredOnly, All, AllAndHovered, }
+	public enum NameMode { None, Hovered, All, AllHovered, AllUnscaled }
 	
 	public enum EntityShadow { None, SnapToBlock, Circle, CircleAll, }
 	
@@ -16,30 +16,32 @@ namespace ClassicalSharp.Entities {
 		public const int MaxCount = 256;
 		public const byte SelfID = 255;
 		
-		public Entity[] Entities = new Entity[MaxCount];
+		public Entity[] List = new Entity[MaxCount];
 		public Game game;
 		public EntityShadow ShadowMode = EntityShadow.None;
 		byte closestId;
 		
 		/// <summary> Mode of how names of hovered entities are rendered (with or without depth testing),
 		/// and how other entity names are rendered. </summary>
-		public NameMode NamesMode = NameMode.AllAndHovered;
+		public NameMode NamesMode = NameMode.Hovered;
 		
 		public EntityList(Game game) {
 			this.game = game;
+			game.Graphics.ContextLost += ContextLost;
+			game.Graphics.ContextRecreated += ContextRecreated;
 			game.Events.ChatFontChanged += ChatFontChanged;
-			game.Events.TextureChanged += TextureChanged;
-			NamesMode = Options.GetEnum(OptionsKey.NamesMode, NameMode.HoveredOnly);
-			if (game.ClassicMode) NamesMode = NameMode.HoveredOnly;
+			
+			NamesMode = Options.GetEnum(OptionsKey.NamesMode, NameMode.Hovered);
+			if (game.ClassicMode) NamesMode = NameMode.Hovered;
 			ShadowMode = Options.GetEnum(OptionsKey.EntityShadow, EntityShadow.None);
 			if (game.ClassicMode) ShadowMode = EntityShadow.None;
 		}
 		
 		/// <summary> Performs a tick call for all player entities contained in this list. </summary>
-		public void Tick(ScheduledTask task) {			
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null) continue;
-				Entities[i].Tick(task.Interval);
+		public void Tick(ScheduledTask task) {
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				List[i].Tick(task.Interval);
 			}
 		}
 		
@@ -47,82 +49,102 @@ namespace ClassicalSharp.Entities {
 		public void RenderModels(IGraphicsApi gfx, double delta, float t) {
 			gfx.Texturing = true;
 			gfx.AlphaTest = true;
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null) continue;
-				Entities[i].RenderModel(delta, t);
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				List[i].RenderModel(delta, t);
 			}
 			gfx.Texturing = false;
 			gfx.AlphaTest = false;
 		}
+		bool hadFog;
 		
 		/// <summary> Renders the names of all player entities contained in this list.<br/>
 		/// If ShowHoveredNames is false, this method only renders names of entities that are
 		/// not currently being looked at by the user. </summary>
 		public void RenderNames(IGraphicsApi gfx, double delta) {
-			if (NamesMode == NameMode.NoNames) return;
+			if (NamesMode == NameMode.None) return;
+			closestId = GetClosetPlayer(game.LocalPlayer);
+			if (!game.LocalPlayer.Hacks.CanSeeAllNames || NamesMode != NameMode.All) return;
+
 			gfx.Texturing = true;
 			gfx.AlphaTest = true;
-			LocalPlayer localP = game.LocalPlayer;
-			Vector3 eyePos = localP.EyePosition;
-			closestId = SelfID;
+			hadFog = gfx.Fog;
+			if (hadFog) gfx.Fog = false;
 			
-			if (NamesMode != NameMode.All)
-				closestId = GetClosetPlayer(game.LocalPlayer);
-			if (NamesMode == NameMode.HoveredOnly || !game.LocalPlayer.Hacks.CanSeeAllNames) {
-				gfx.Texturing = false;
-				gfx.AlphaTest = false;
-				return;
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				if (i != closestId || i == SelfID) {
+					List[i].RenderName();
+				}
 			}
 			
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null) continue;
-				if (i != closestId || i == SelfID)
-					Entities[i].RenderName();
-			}
 			gfx.Texturing = false;
 			gfx.AlphaTest = false;
+			if (hadFog) gfx.Fog = true;
 		}
 		
 		public void RenderHoveredNames(IGraphicsApi gfx, double delta) {
-			if (NamesMode == NameMode.NoNames || NamesMode == NameMode.All)
-				return;
+			if (NamesMode == NameMode.None) return;
 			gfx.Texturing = true;
 			gfx.AlphaTest = true;
 			gfx.DepthTest = false;
+			hadFog = gfx.Fog;
+			if (hadFog) gfx.Fog = false;
 			
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] != null && i == closestId && i != SelfID)
-					Entities[i].RenderName();
+			bool allNames = !(NamesMode == NameMode.Hovered || NamesMode == NameMode.All)
+				&& game.LocalPlayer.Hacks.CanSeeAllNames;
+			for (int i = 0; i < List.Length; i++) {
+				bool hover = (i == closestId || allNames) && i != SelfID;
+				if (List[i] != null && hover) {
+					List[i].RenderName();
+				}
 			}
+			
 			gfx.Texturing = false;
 			gfx.AlphaTest = false;
 			gfx.DepthTest = true;
+			if (hadFog) gfx.Fog = true;
 		}
 		
-		void TextureChanged(object sender, TextureEventArgs e) {
-			if (e.Name != "char.png") return;
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null || Entities[i].TextureId != -1) continue;
-				Entities[i].SkinType = game.DefaultPlayerSkinType;				
+		void ContextLost() {
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				List[i].ContextLost();
+			}
+		}
+		
+		void ContextRecreated() {
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				List[i].ContextRecreated();
 			}
 		}
 		
 		void ChatFontChanged(object sender, EventArgs e) {
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null) continue;
-				Player p = Entities[i] as Player;
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				Player p = List[i] as Player;
 				if (p != null) p.UpdateName();
 			}
 		}
 		
+		public void RemoveEntity(byte id) {
+			game.EntityEvents.RaiseRemoved(id);
+			List[id].Despawn();
+			List[id] = null;
+		}
+		
 		/// <summary> Disposes of all player entities contained in this list. </summary>
 		public void Dispose() {
-			for (int i = 0; i < Entities.Length; i++) {
-				if (Entities[i] == null) continue;
-				Entities[i].Despawn();
+			for (int i = 0; i < List.Length; i++) {
+				if (List[i] == null) continue;
+				RemoveEntity((byte)i);
 			}
+			
+			game.Graphics.ContextLost -= ContextLost;
+			game.Graphics.ContextRecreated -= ContextRecreated;
 			game.Events.ChatFontChanged -= ChatFontChanged;
-			game.Events.TextureChanged -= TextureChanged;
+			
 			if (ShadowComponent.shadowTex > 0)
 				game.Graphics.DeleteTexture(ref ShadowComponent.shadowTex);
 		}
@@ -133,8 +155,8 @@ namespace ClassicalSharp.Entities {
 			float closestDist = float.PositiveInfinity;
 			byte targetId = SelfID;
 			
-			for (int i = 0; i < Entities.Length - 1; i++) { // -1 because we don't want to pick against local player
-				Entity p = Entities[i];
+			for (int i = 0; i < List.Length - 1; i++) { // -1 because we don't want to pick against local player
+				Entity p = List[i];
 				if (p == null) continue;
 				
 				float t0, t1;
@@ -144,16 +166,6 @@ namespace ClassicalSharp.Entities {
 				}
 			}
 			return targetId;
-		}
-		
-		/// <summary> Gets or sets the player entity for the specified id. </summary>
-		public Entity this[int id] {
-			get { return Entities[id]; }
-			set {
-				Entities[id] = value;
-				if (value != null)
-					value.ID = (byte)id;
-			}
 		}
 		
 		public void DrawShadows() {
@@ -167,22 +179,19 @@ namespace ClassicalSharp.Entities {
 			gfx.Texturing = true;
 			
 			gfx.SetBatchFormat(VertexFormat.P3fT2fC4b);
-			((Player)Entities[SelfID]).shadow.Draw();
-			if (ShadowMode == EntityShadow.CircleAll)
-				DrawOtherShadows();
+			ShadowComponent.Draw(game, List[SelfID]);
+			if (ShadowMode == EntityShadow.CircleAll) {
+				for (int i = 0; i < SelfID; i++) {
+					if (List[i] == null) continue;
+					Player p = List[i] as Player;
+					if (p != null) ShadowComponent.Draw(game, p);
+				}
+			}
 			
 			gfx.AlphaArgBlend = false;
 			gfx.DepthWrite = true;
 			gfx.AlphaBlending = false;
 			gfx.Texturing = false;
-		}
-		
-		void DrawOtherShadows() {
-			for (int i = 0; i < SelfID; i++) {
-				if (Entities[i] == null) continue;
-				Player p = Entities[i] as Player;
-				if (p != null) p.shadow.Draw();
-			}
 		}
 	}
 }

@@ -1,7 +1,6 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
 using ClassicalSharp.Entities;
-using ClassicalSharp.GraphicsAPI;
 using ClassicalSharp.Physics;
 using OpenTK;
 
@@ -9,8 +8,9 @@ namespace ClassicalSharp.Model {
 
 	public class CreeperModel : IModel {
 		
-		public CreeperModel(Game window) : base(window) { }
-		
+		public CreeperModel(Game window) : base(window) { SurivalScore = 200; }
+
+		/// <inheritdoc/>		
 		public override void CreateParts() {
 			vertices = new ModelVertex[boxVertices * 6];
 			Head =  BuildBox(MakeBoxBounds(-4, 18, -4, 4, 26, 4)
@@ -33,27 +33,32 @@ namespace ClassicalSharp.Model {
 			                        .RotOrigin(0, 6, 2));
 		}
 		
+		/// <inheritdoc/>		
 		public override float NameYOffset { get { return 1.7f; } }
-		
+
+		/// <inheritdoc/>		
 		public override float GetEyeY(Entity entity) { return 22/16f; }
-		
+
+		/// <inheritdoc/>		
 		public override Vector3 CollisionSize {
 			get { return new Vector3(8/16f, 26/16f, 8/16f); }
 		}
-		
+
+		/// <inheritdoc/>		
 		public override AABB PickingBounds {
 			get { return new AABB(-4/16f, 0, -6/16f, 4/16f, 26/16f, 6/16f); }
 		}
-		
-		protected override void DrawModel(Entity p) {
-			game.Graphics.BindTexture(GetTexture(p.MobTextureId));
+
+		/// <inheritdoc/>		
+		public override void DrawModel(Entity p) {
+			game.Graphics.BindTexture(GetTexture(p));
 			DrawRotate(-p.HeadXRadians, 0, 0, Head, true);
 
 			DrawPart(Torso);
-			DrawRotate(p.anim.legXRot, 0, 0, LeftLegFront, false);
-			DrawRotate(-p.anim.legXRot, 0, 0, RightLegFront, false);
-			DrawRotate(-p.anim.legXRot, 0, 0, LeftLegBack, false);
-			DrawRotate(p.anim.legXRot, 0, 0, RightLegBack, false);
+			DrawRotate(p.anim.leftLegX, 0, 0, LeftLegFront, false);
+			DrawRotate(p.anim.rightLegX, 0, 0, RightLegFront, false);
+			DrawRotate(p.anim.rightLegX, 0, 0, LeftLegBack, false);
+			DrawRotate(p.anim.leftLegX, 0, 0, RightLegBack, false);
 			UpdateVB();
 		}
 		

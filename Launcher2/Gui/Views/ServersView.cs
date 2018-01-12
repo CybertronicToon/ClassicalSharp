@@ -4,22 +4,22 @@ using System.Drawing;
 using ClassicalSharp;
 using Launcher.Drawing;
 using Launcher.Gui.Widgets;
-using OpenTK.Input;
 
-namespace Launcher.Gui.Views {	
+namespace Launcher.Gui.Views {
 	public sealed class ServersView : IView {
 		
-		internal int searchIndex = 0, hashIndex = 1;
+		internal int searchIndex = 0, hashIndex = 1, refreshIndex = 5;
 		internal int backIndex = 2, connectIndex = 3, tableIndex = 4;
 		Font tableFont;
 		const int tableX = 10, tableY = 50;
+		public string RefreshText = "Refresh";
 		
 		public ServersView(LauncherWindow game) : base(game) {
-			widgets = new Widget[5];
+			widgets = new Widget[6];
 		}
 		
 		public override void Init() {
-			titleFont = new Font(game.FontName, 15, FontStyle.Bold);
+			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
 			textFont = new Font(game.FontName, 14, FontStyle.Regular);
 			inputHintFont = new Font(game.FontName, 12, FontStyle.Italic);
 			tableFont = new Font(game.FontName, 11, FontStyle.Regular);
@@ -35,16 +35,19 @@ namespace Launcher.Gui.Views {
 		
 		protected override void MakeWidgets() {
 			widgetIndex = 0;
-			MakeInput(Get(0), 475, false, 32, "&gSearch servers..")
+			MakeInput(Get(0), 370, false, 32, "&gSearch servers..")
 				.SetLocation(Anchor.LeftOrTop, Anchor.LeftOrTop, 10, 10);
 			MakeInput(Get(1), 475, false, 32, "&gclassicube.net/server/play/...")
 				.SetLocation(Anchor.LeftOrTop, Anchor.BottomOrRight, 10, -10);
 			
 			Makers.Button(this, "Back", 110, 30, titleFont)
-				.SetLocation(Anchor.BottomOrRight, Anchor.LeftOrTop, -20, 10);
-			Makers.Button(this, "Connect", 110, 30, titleFont)
-				.SetLocation(Anchor.BottomOrRight, Anchor.BottomOrRight, -20, -10);
+				.SetLocation(Anchor.BottomOrRight, Anchor.LeftOrTop, -10, 10);
+			Makers.Button(this, "Connect", 130, 30, titleFont)
+				.SetLocation(Anchor.BottomOrRight, Anchor.BottomOrRight, -10, -10);
+			
 			MakeTableWidget();
+			Makers.Button(this, RefreshText, 110, 30, titleFont)
+				.SetLocation(Anchor.BottomOrRight, Anchor.LeftOrTop, -135, 10);
 		}
 		
 		string Get(int index) {
@@ -76,17 +79,22 @@ namespace Launcher.Gui.Views {
 			TableWidget widget;
 			if (widgets[tableIndex] != null) {
 				widget = (TableWidget)widgets[tableIndex];
+				if (widget.servers != game.Session.Servers) ResetTable(widget);
 			} else {
 				widget = new TableWidget(game);
-				widget.SetEntries(game.Session.Servers);
-				widget.SetDrawData(drawer, tableFont, textFont,
-				                   Anchor.LeftOrTop, Anchor.LeftOrTop, tableX, tableY);
-				widget.SortDefault();
+				ResetTable(widget);
 				widgets[widgetIndex] = widget;
 			}
 			
 			widget.Height = tableHeight;
 			widgetIndex++;
+		}
+		
+		void ResetTable(TableWidget widget) {
+			widget.SetEntries(game.Session.Servers);
+			widget.SetDrawData(drawer, tableFont, textFont,
+			                   Anchor.LeftOrTop, Anchor.LeftOrTop, tableX, tableY);
+			widget.SortDefault();
 		}
 		
 		public override void Dispose() {

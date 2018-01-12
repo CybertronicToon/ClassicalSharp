@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+<Project ToolsVersion="2.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
   <PropertyGroup>
     <ProjectGuid>{35FEE071-2DE6-48A1-9343-B5C1F202A12B}</ProjectGuid>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -52,10 +52,8 @@
     <Compile Include="BindingsBase.cs" />
     <Compile Include="Debug.cs" />
     <Compile Include="DisplayDevice.cs" />
-    <Compile Include="DisplayResolution.cs" />
     <Compile Include="FrameEventArgs.cs" />
     <Compile Include="GameWindow.cs" />
-    <Compile Include="GameWindowFlags.cs" />
     <Compile Include="Graphics\OpenGL\GL.cs" />
     <Compile Include="IGameWindow.cs" />
     <Compile Include="INativeWindow.cs" />
@@ -80,7 +78,6 @@
     <Compile Include="Math\Vector3.cs" />
     <Compile Include="Math\Vector4.cs" />
     <Compile Include="Platform\Configuration.cs" />
-    <Compile Include="Platform\IDisplayDeviceDriver.cs" />
     <Compile Include="Platform\IPlatformFactory.cs" />
     <Compile Include="Platform\IWindowInfo.cs" />
     <Compile Include="Platform\MacOS\AglContext.cs" />
@@ -94,7 +91,7 @@
     <Compile Include="Platform\MacOS\CarbonWindowInfo.cs" />
     <Compile Include="Platform\MacOS\MacOSException.cs" />
     <Compile Include="Platform\MacOS\MacOSKeyMap.cs" />
-    <Compile Include="Platform\MacOS\QuartzDisplayDeviceDriver.cs" />
+    <Compile Include="Platform\MacOS\QuartzDisplayDevice.cs" />
     <Compile Include="Platform\PlatformException.cs" />
     <Compile Include="Platform\Windows\API.cs" />
     <Compile Include="Platform\Windows\Wgl.cs" />
@@ -115,10 +112,8 @@
     <Compile Include="Platform\X11\X11WindowInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SharpDX.Direct3D\AdapterDetails.cs" />
-    <Compile Include="SharpDX.Direct3D\AdapterInformation.cs" />
     <Compile Include="SharpDX.Direct3D\Device.cs" />
     <Compile Include="SharpDX.Direct3D\Direct3D.cs" />
-    <Compile Include="SharpDX.Direct3D\DisplayMode.cs" />
     <Compile Include="SharpDX.Direct3D\Enumerations.cs" />
     <Compile Include="SharpDX.Direct3D\PresentParameters.cs" />
     <Compile Include="SharpDX.Direct3D\Resources.cs" />

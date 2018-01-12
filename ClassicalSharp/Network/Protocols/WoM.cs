@@ -16,7 +16,7 @@ namespace ClassicalSharp.Network.Protocols {
 		internal bool sendWomId = false, sentWomId = false;
 
 		public override void Tick() {
-			DownloadedItem item;
+			Request item;
 			game.AsyncDownloader.TryGetItem(womEnvIdentifier, out item);
 			if (item != null && item.Data != null) {
 				ParseWomConfig((string)item.Data);
@@ -24,6 +24,7 @@ namespace ClassicalSharp.Network.Protocols {
 		}
 		
 		internal void CheckMotd() {
+			if (net.ServerMotd == null) return;
 			int index = net.ServerMotd.IndexOf("cfg=");
 			if (game.PureClassic || index == -1) return;
 			
@@ -42,7 +43,7 @@ namespace ClassicalSharp.Network.Protocols {
 		
 		internal void CheckSendWomID() {
 			if (sendWomId && !sentWomId) {
-				net.SendChat("/womid WoMClient-2.0.7", false);
+				net.SendChat("/womid WoMClient-2.0.7");
 				sentWomId = true;
 			}
 		}

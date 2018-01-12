@@ -51,13 +51,6 @@ namespace SharpDX.Direct3D9
 			}
 		}
 		
-		public DisplayMode GetDisplayMode(int iSwapChain) {
-			DisplayMode modeRef = new DisplayMode();
-			int res = Interop.Calli(comPointer, iSwapChain, (IntPtr)(void*)&modeRef,(*(IntPtr**)comPointer)[8]);
-			if( res < 0 ) { throw new SharpDXException( res ); }
-			return modeRef;
-		}
-		
 		public int Reset( PresentParameters presentParams ) {
 			return Interop.Calli(comPointer, (IntPtr)(void*)&presentParams,(*(IntPtr**)comPointer)[16]);
 		}
@@ -155,6 +148,11 @@ namespace SharpDX.Direct3D9
 			int res = Interop.Calli(comPointer, stage, (int)type, value,(*(IntPtr**)comPointer)[67]);
 			if( res < 0 ) { throw new SharpDXException( res ); }
 		}
+		
+		public void SetSamplerState(int sampler, SamplerState type, int value) {
+			int res = Interop.Calli(comPointer, sampler, (int)type, value, (*(IntPtr**)comPointer)[69]);
+            if( res < 0 ) { throw new SharpDXException( res ); }
+        }
 		
 		public void DrawPrimitives(PrimitiveType type, int startVertex, int primitiveCount) {
 			int res = Interop.Calli(comPointer, (int)type, startVertex, primitiveCount,(*(IntPtr**)comPointer)[81]);

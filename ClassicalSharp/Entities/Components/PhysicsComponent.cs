@@ -1,7 +1,14 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
+using ClassicalSharp.Model;
 using ClassicalSharp.Physics;
 using OpenTK;
+
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
 
 namespace ClassicalSharp.Entities {
 	
@@ -10,10 +17,10 @@ namespace ClassicalSharp.Entities {
 		
 		bool useLiquidGravity = false; // used by BlockDefinitions.
 		bool canLiquidJump = true;
-		internal bool firstJump, secondJump, jumping;
+		internal bool jumping;
+		internal int multiJumps;
 		Entity entity;
 		Game game;
-		BlockInfo info;
 		
 		internal float jumpVel = 0.42f, userJumpVel = 0.42f, serverJumpVel = 0.42f;
 		internal HacksComponent hacks;
@@ -22,13 +29,10 @@ namespace ClassicalSharp.Entities {
 		public PhysicsComponent(Game game, Entity entity) {
 			this.game = game;
 			this.entity = entity;
-			info = game.BlockInfo;
 		}
 		
-		public void UpdateVelocityState(float xMoving, float zMoving) {
-			if (!hacks.NoclipSlide && (hacks.Noclip && xMoving == 0 && zMoving == 0))
-				entity.Velocity = Vector3.Zero;
-			if (hacks.Flying || hacks.Noclip) {
+		public void UpdateVelocityState() {
+			if (hacks.Floating) {
 				entity.Velocity.Y = 0; // eliminate the effect of gravity
 				int dir = (hacks.FlyingUp || jumping) ? 1 : (hacks.FlyingDown ? -1 : 0);
 				
@@ -52,10 +56,10 @@ namespace ClassicalSharp.Entities {
 				if (bodyY > headY) bodyY = headY;
 				
 				bounds.Max.Y = bounds.Min.Y = feetY;
-				bool liquidFeet = entity.TouchesAny(bounds, StandardLiquid);
+				bool liquidFeet = entity.TouchesAny(bounds, touchesLiquid);
 				bounds.Min.Y = Math.Min(bodyY, headY);
 				bounds.Max.Y = Math.Max(bodyY, headY);
-				bool liquidRest = entity.TouchesAny(bounds, StandardLiquid);
+				bool liquidRest = entity.TouchesAny(bounds, touchesLiquid);
 				
 				bool pastJumpPoint = liquidFeet && !liquidRest && (entity.Position.Y % 1 >= 0.4);
 				if (!pastJumpPoint) {
@@ -65,7 +69,7 @@ namespace ClassicalSharp.Entities {
 					if (hacks.HalfSpeeding && hacks.CanSpeed) entity.Velocity.Y += 0.02f;
 				} else if (pastJumpPoint) {
 					// either A) jump bob in water B) climb up solid on side
-					if (collisions.HorCollision)
+					if (collisions.HorizontalCollision)
 						entity.Velocity.Y += touchLava ? 0.30f : 0.13f;
 					else if (canLiquidJump)
 						entity.Velocity.Y += touchLava ? 0.20f : 0.10f;
@@ -85,7 +89,7 @@ namespace ClassicalSharp.Entities {
 		}
 		
 		public void DoNormalJump() {
-			if (jumpVel == 0) return;
+			if (jumpVel == 0 || hacks.MaxJumps == 0) return;
 			
 			entity.Velocity.Y = jumpVel;
 			if (hacks.Speeding && hacks.CanSpeed) entity.Velocity.Y += jumpVel;
@@ -93,45 +97,48 @@ namespace ClassicalSharp.Entities {
 			canLiquidJump = false;
 		}
 		
-		bool StandardLiquid(byte block) {
-			return info.Collide[block] == CollideType.SwimThrough;
-		}
+		static Predicate<BlockID> touchesLiquid = IsLiquidCollide;
+		static bool IsLiquidCollide(BlockID block) { return BlockInfo.Collide[block] == CollideType.Liquid; }
 		
 		static Vector3 waterDrag = new Vector3(0.8f, 0.8f, 0.8f),
 		lavaDrag = new Vector3(0.5f, 0.5f, 0.5f),
-		ropeDrag = new Vector3(0.5f, 0.85f, 0.5f),
-		normalDrag = new Vector3(0.91f, 0.98f, 0.91f),
-		airDrag = new Vector3(0.6f, 1f, 0.6f);
-		const float liquidGrav = 0.02f, ropeGrav = 0.034f, normalGrav = 0.08f;
+		ropeDrag = new Vector3(0.5f, 0.85f, 0.5f);
+		const float liquidGrav = 0.02f, ropeGrav = 0.034f;
 		
-		public void PhysicsTick(float xMoving, float zMoving) {
+		public void PhysicsTick(Vector3 vel) {
 			if (hacks.Noclip) entity.onGround = false;
-			float multiply = GetBaseMultiply(true);
-			float yMultiply = GetBaseMultiply(hacks.CanSpeed);
-			float modifier = LowestSpeedModifier();
+			float baseSpeed = GetBaseSpeed();
+			float verSpeed = baseSpeed * Math.Max(1, GetSpeed(8f) / 5);
+			float horSpeed = baseSpeed * hacks.BaseHorSpeed * GetSpeed(8f/5);
+			// previously horSpeed used to be multiplied by factor of 0.02 in last case
+			// it's now multiplied by 0.1, so need to divide by 5 so user speed modifier comes out same
 			
-			float yMul = Math.Max(1f, yMultiply / 5) * modifier;
-			float horMul = multiply * modifier;
-			if (!(hacks.Flying || hacks.Noclip)) {
-				if (secondJump) { horMul *= 93f; yMul *= 10f; }
-				else if (firstJump) { horMul *= 46.5f; yMul *= 7.5f; }
+			// TODO: this is a temp fix to avoid crashing for high horizontal speed
+			if (horSpeed > 75.0f) horSpeed = 75.0f;
+			
+			bool womSpeedBoost = hacks.CanDoubleJump && hacks.WOMStyleHacks;
+			if (!hacks.Floating && womSpeedBoost) {
+				if (multiJumps == 1) { horSpeed *= 46.5f; verSpeed *= 7.5f; }
+				else if (multiJumps > 1) { horSpeed *= 93f; verSpeed *= 10f; }
 			}
 			
-			if (entity.TouchesAnyWater() && !hacks.Flying && !hacks.Noclip) {
-				MoveNormal(xMoving, zMoving, 0.02f * horMul, waterDrag, liquidGrav, yMul);
-			} else if (entity.TouchesAnyLava() && !hacks.Flying && !hacks.Noclip) {
-				MoveNormal(xMoving, zMoving, 0.02f * horMul, lavaDrag, liquidGrav, yMul);
-			} else if (entity.TouchesAnyRope() && !hacks.Flying && !hacks.Noclip) {
-				MoveNormal(xMoving, zMoving, 0.02f * 1.7f, ropeDrag, ropeGrav, yMul);
+			if (entity.TouchesAnyWater() && !hacks.Floating) {
+				MoveNormal(vel, 0.02f * horSpeed, waterDrag, liquidGrav, verSpeed);
+			} else if (entity.TouchesAnyLava() && !hacks.Floating) {
+				MoveNormal(vel, 0.02f * horSpeed, lavaDrag, liquidGrav, verSpeed);
+			} else if (entity.TouchesAnyRope() && !hacks.Floating) {
+				MoveNormal(vel, 0.02f * 1.7f, ropeDrag, ropeGrav, verSpeed);
 			} else {
-				float factor = !(hacks.Flying || hacks.Noclip) && entity.onGround ? 0.1f : 0.02f;
-				float gravity = useLiquidGravity ? liquidGrav : normalGrav;
-				if (hacks.Flying || hacks.Noclip)
-					MoveFlying(xMoving, zMoving, factor * horMul, normalDrag, gravity, yMul);
-				else
-					MoveNormal(xMoving, zMoving, factor * horMul, normalDrag, gravity, yMul);
+				float factor = hacks.Floating || entity.onGround ? 0.1f : 0.02f;
+				float gravity = useLiquidGravity ? liquidGrav : entity.Model.Gravity;
+				
+				if (hacks.Floating) {
+					MoveFlying(vel, factor * horSpeed, entity.Model.Drag, gravity, verSpeed);
+				} else {
+					MoveNormal(vel, factor * horSpeed, entity.Model.Drag, gravity, verSpeed);
+				}
 
-				if (entity.BlockUnderFeet == Block.Ice && !(hacks.Flying || hacks.Noclip)) {
+				if (OnIce(entity) && !hacks.Floating) {
 					// limit components to +-0.25f by rescaling vector to [-0.25, 0.25]
 					if (Math.Abs(entity.Velocity.X) > 0.25f || Math.Abs(entity.Velocity.Z) > 0.25f) {
 						float scale = Math.Min(
@@ -140,27 +147,43 @@ namespace ClassicalSharp.Entities {
 						entity.Velocity.Z *= scale;
 					}
 				} else if (entity.onGround || hacks.Flying) {
-					entity.Velocity = Utils.Mul(entity.Velocity, airDrag); // air drag or ground friction
+					entity.Velocity = Utils.Mul(entity.Velocity, entity.Model.GroundFriction); // air drag or ground friction
 				}
 			}
 			
-			if (entity.onGround) { firstJump = false; secondJump = false; }
+			if (entity.onGround) multiJumps = 0;
 		}
 		
-		void AdjHeadingVelocity(float x, float z, float factor) {
-			float dist = (float)Math.Sqrt(x * x + z * z);
+		
+		bool OnIce(Entity entity) {
+			Vector3 under = entity.Position; under.Y -= 0.01f;
+			if (BlockInfo.ExtendedCollide[GetBlock(under)] == CollideType.Ice) return true;
+			
+			AABB bounds = entity.Bounds;
+			bounds.Min.Y -= 0.01f; bounds.Max.Y = bounds.Min.Y;
+			return entity.TouchesAny(bounds, touchesSlipperyIce);
+		}
+		
+		BlockID GetBlock(Vector3 coords) {
+			return game.World.SafeGetBlock(Vector3I.Floor(coords));
+		}
+		
+		static Predicate<BlockID> touchesSlipperyIce = IsSlipperyIce;
+		static bool IsSlipperyIce(BlockID b) { return BlockInfo.ExtendedCollide[b] == CollideType.SlipperyIce; }
+		
+		void MoveHor(Vector3 vel, float factor) {
+			float dist = (float)Math.Sqrt(vel.X * vel.X + vel.Z * vel.Z);
 			if (dist < 0.00001f) return;
 			if (dist < 1) dist = 1;
-
-			float multiply = factor / dist;
-			entity.Velocity += Utils.RotateY(x * multiply, 0, z * multiply, entity.HeadYRadians);
+			
+			entity.Velocity += vel * (factor / dist);
 		}
 		
-		void MoveFlying(float xMoving, float zMoving, float factor, Vector3 drag, float gravity, float yMul) {
-			AdjHeadingVelocity(zMoving, xMoving, factor);
+		void MoveFlying(Vector3 vel, float factor, Vector3 drag, float gravity, float yMul) {
+			MoveHor(vel, factor);
 			float yVel = (float)Math.Sqrt(entity.Velocity.X * entity.Velocity.X + entity.Velocity.Z * entity.Velocity.Z);
 			// make horizontal speed the same as vertical speed.
-			if ((xMoving != 0 || zMoving != 0) && yVel > 0.001f) {
+			if ((vel.X != 0 || vel.Z != 0) && yVel > 0.001f) {
 				entity.Velocity.Y = 0;
 				yMul = 1;
 				if (hacks.FlyingUp || jumping) entity.Velocity.Y += yVel;
@@ -169,8 +192,8 @@ namespace ClassicalSharp.Entities {
 			Move(drag, gravity, yMul);
 		}
 		
-		void MoveNormal(float xMoving, float zMoving, float factor, Vector3 drag, float gravity, float yMul) {
-			AdjHeadingVelocity(zMoving, xMoving, factor);
+		void MoveNormal(Vector3 vel, float factor, Vector3 drag, float gravity, float yMul) {
+			MoveHor(vel, factor);
 			Move(drag, gravity, yMul);
 		}
 		
@@ -185,19 +208,15 @@ namespace ClassicalSharp.Entities {
 			entity.Velocity.Y -= gravity;
 		}
 
-		float GetBaseMultiply(bool canSpeed) {
-			float multiply = 0;
-			float speed = (hacks.Flying || hacks.Noclip) ? 8 : 1;
-			
-			
-			if (hacks.Speeding && canSpeed) multiply += speed * hacks.SpeedMultiplier;
-			if (hacks.HalfSpeeding && canSpeed) multiply += speed * hacks.SpeedMultiplier / 2;
-			if (multiply == 0) multiply = speed;
-			return hacks.CanSpeed ? multiply : Math.Min(multiply, hacks.MaxSpeedMultiplier);
+		float GetSpeed(float speedMul) {
+			float factor = hacks.Floating ? speedMul : 1, speed = factor;		
+			if (hacks.Speeding     && hacks.CanSpeed) speed += factor * hacks.SpeedMultiplier;
+			if (hacks.HalfSpeeding && hacks.CanSpeed) speed += factor * hacks.SpeedMultiplier / 2;
+			return hacks.CanSpeed ? speed : Math.Min(speed, 1.0f);
 		}
 		
 		const float inf = float.PositiveInfinity;
-		float LowestSpeedModifier() {
+		float GetBaseSpeed() {
 			AABB bounds = entity.Bounds;
 			useLiquidGravity = false;
 			float baseModifier = LowestModifier(bounds, false);
@@ -209,27 +228,31 @@ namespace ClassicalSharp.Entities {
 		}
 		
 		float LowestModifier(AABB bounds, bool checkSolid) {
-			Vector3I bbMin = Vector3I.Floor(bounds.Min);
-			Vector3I bbMax = Vector3I.Floor(bounds.Max);
+			Vector3I min = Vector3I.Floor(bounds.Min);
+			Vector3I max = Vector3I.Floor(bounds.Max);
 			float modifier = inf;
 			
-			for (int y = bbMin.Y; y <= bbMax.Y; y++)
-				for (int z = bbMin.Z; z <= bbMax.Z; z++)
-					for (int x = bbMin.X; x <= bbMax.X; x++)
+			AABB blockBB = default(AABB);
+			min.X = min.X < 0 ? 0 : min.X; max.X = max.X > game.World.MaxX ? game.World.MaxX : max.X;
+			min.Y = min.Y < 0 ? 0 : min.Y; max.Y = max.Y > game.World.MaxY ? game.World.MaxY : max.Y;
+			min.Z = min.Z < 0 ? 0 : min.Z; max.Z = max.Z > game.World.MaxZ ? game.World.MaxZ : max.Z;
+			
+			for (int y = min.Y; y <= max.Y; y++)
+				for (int z = min.Z; z <= max.Z; z++)
+					for (int x = min.X; x <= max.X; x++)
 			{
-				byte block = game.World.SafeGetBlock(x, y, z);
+				BlockID block = game.World.GetBlock(x, y, z);
 				if (block == 0) continue;
-				CollideType type = info.Collide[block];
-				if (type == CollideType.Solid && !checkSolid)
-					continue;
+				byte collide = BlockInfo.Collide[block];
+				if (collide == CollideType.Solid && !checkSolid) continue;
 				
-				Vector3 min = new Vector3(x, y, z) + info.MinBB[block];
-				Vector3 max = new Vector3(x, y, z) + info.MaxBB[block];
-				AABB blockBB = new AABB(min, max);
+				Vector3 v = new Vector3(x, y, z);
+				blockBB.Min = v + BlockInfo.MinBB[block];
+				blockBB.Max = v + BlockInfo.MaxBB[block];
 				if (!blockBB.Intersects(bounds)) continue;
 				
-				modifier = Math.Min(modifier, info.SpeedMultiplier[block]);
-				if (!info.IsLiquid(block) && type == CollideType.SwimThrough)
+				modifier = Math.Min(modifier, BlockInfo.SpeedMultiplier[block]);
+				if (BlockInfo.ExtendedCollide[block] == CollideType.Liquid)
 					useLiquidGravity = true;
 			}
 			return modifier;
@@ -241,12 +264,11 @@ namespace ClassicalSharp.Entities {
 			jumpVel = 0;
 			if (jumpHeight == 0) return;
 			
-			if (jumpHeight >= 256) jumpVel = 10.0f;
+			if (jumpHeight >= 256) jumpVel = 10.0f; 
 			if (jumpHeight >= 512) jumpVel = 16.5f;
 			if (jumpHeight >= 768) jumpVel = 22.5f;
 			
-			while (GetMaxHeight(jumpVel) <= jumpHeight)
-				jumpVel += 0.001f;
+			while (GetMaxHeight(jumpVel) <= jumpHeight) { jumpVel += 0.001f; }
 			if (userVel) userJumpVel = jumpVel;
 		}
 		
@@ -266,28 +288,24 @@ namespace ClassicalSharp.Entities {
 			return a * (-49 * u - 196) - 4 * t + 50 * u + 196;
 		}
 		
-		public void DoEntityPush(ref float xMoving, ref float zMoving) {
-			if (!game.ClassicMode || hacks.Flying || hacks.Noclip) return;
-			return;
-			// TODO: Fix
-			
-			for (int id = 0; id < EntityList.SelfID; id++) {
-				Entity other = game.Entities[id];
-				if (other == null) continue;
+		public void DoEntityPush() {
+			for (int id = 0; id < EntityList.MaxCount; id++) {
+				Entity other = game.Entities.List[id];
+				if (other == null || other == entity) continue;
+				if (!other.Model.Pushes) continue;
 				
-				float dx = other.Position.X - entity.Position.X;
-				float dy = other.Position.Y - entity.Position.Y;
-				float dz = other.Position.Z - entity.Position.Z;
-				float dist = dx * dx + dy * dy + dz * dz;
-				if (dist < 0.0001f || dist > 0.5f) continue;
+				bool yIntersects = 
+					entity.Position.Y <= (other.Position.Y + other.Size.Y) && 
+					other.Position.Y  <= (entity.Position.Y + entity.Size.Y);
+				if (!yIntersects) continue;
 				
-				double yaw = Math.Atan2(dz, dx) - Math.PI / 2;
-				Vector3 dir = Utils.GetDirVector(yaw, 0);
-				Console.WriteLine("Yaw: " + yaw * Utils.Rad2Deg);
-				Console.WriteLine(dir);
-				Console.WriteLine(entity.Position);
-				xMoving = -dir.X;
-				zMoving = -dir.Z;
+				float dX = other.Position.X - entity.Position.X;
+				float dZ = other.Position.Z - entity.Position.Z;
+				float dist = dX * dX + dZ * dZ;
+				if (dist < 0.002f || dist > 1f) continue; // TODO: range needs to be lower?
+				
+				Vector3 dir = Vector3.Normalize(dX, 0, dZ);
+				entity.Velocity -= dir * (1 - dist) / 32f; // TODO: should be 24/25
 			}
 		}
 	}

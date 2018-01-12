@@ -15,41 +15,35 @@ namespace ClassicalSharp.Textures {
 		public int elementsPerBitmap;
 		public float invElementSize;
 		public int[] TexIds;
-		IGraphicsApi gfx;
 		
-		public TerrainAtlas1D(IGraphicsApi gfx) {
-			this.gfx = gfx;
-		}
+		Game game;		
+		public TerrainAtlas1D(Game game) { this.game = game; }
 		
-		public TextureRec GetTexRec(int texId, int uCount, out int index) {
-			index = texId / elementsPerAtlas1D;
-			int y = texId % elementsPerAtlas1D;
+		public TextureRec GetTexRec(int texLoc, int uCount, out int index) {
+			index = texLoc / elementsPerAtlas1D;
+			int y = texLoc % elementsPerAtlas1D;
 			// Adjust coords to be slightly inside - fixes issues with AMD/ATI cards.
 			return new TextureRec(0, y * invElementSize, (uCount - 1) + 15.99f/16f, (15.99f/16f) * invElementSize);
 		}
 		
 		/// <summary> Returns the index of the 1D texture within the array of 1D textures
 		/// containing the given texture id. </summary>
-		public int Get1DIndex(int texId) {
-			return texId / elementsPerAtlas1D;
-		}
+		public int Get1DIndex(int texLoc) { return texLoc / elementsPerAtlas1D; }
 		
 		/// <summary> Returns the index of the given texture id within a 1D texture. </summary>
-		public int Get1DRowId(int texId) {
-			return texId % elementsPerAtlas1D;
-		}
+		public int Get1DRowId(int texLoc) { return texLoc % elementsPerAtlas1D; }
 		
 		public void UpdateState(TerrainAtlas2D atlas2D) {
-			int maxVerticalSize = Math.Min(4096, gfx.MaxTextureDimensions);
-			int elementsPerFullAtlas = maxVerticalSize / atlas2D.elementSize;
-			int totalElements = TerrainAtlas2D.RowsCount * TerrainAtlas2D.ElementsPerRow;
+			int maxVerticalSize = Math.Min(4096, game.Graphics.MaxTextureDimensions);
+			int elementsPerFullAtlas = maxVerticalSize / atlas2D.TileSize;
+			int totalElements = TerrainAtlas2D.RowsCount * TerrainAtlas2D.TilesPerRow;
 			
 			int atlasesCount = Utils.CeilDiv(totalElements, elementsPerFullAtlas);
 			elementsPerAtlas1D = Math.Min(elementsPerFullAtlas, totalElements);
-			int atlas1DHeight = Utils.NextPowerOf2(elementsPerAtlas1D * atlas2D.elementSize);
+			int atlas1DHeight = Utils.NextPowerOf2(elementsPerAtlas1D * atlas2D.TileSize);
 			
 			Convert2DTo1D(atlas2D, atlasesCount, atlas1DHeight);
-			elementsPerBitmap = atlas1DHeight / atlas2D.elementSize;
+			elementsPerBitmap = atlas1DHeight / atlas2D.TileSize;
 			invElementSize = 1f / elementsPerBitmap;
 		}
 		
@@ -65,8 +59,8 @@ namespace ClassicalSharp.Textures {
 		}
 		
 		void Make1DTexture(int i, FastBitmap atlas, TerrainAtlas2D atlas2D, int atlas1DHeight, ref int index) {
-			int elemSize = atlas2D.elementSize;
-			using (Bitmap atlas1d = Platform.CreateBmp(atlas2D.elementSize, atlas1DHeight))
+			int elemSize = atlas2D.TileSize;
+			using (Bitmap atlas1d = Platform.CreateBmp(atlas2D.TileSize, atlas1DHeight))
 				using (FastBitmap dst = new FastBitmap(atlas1d, true, false))
 			{
 				for (int index1D = 0; index1D < elementsPerAtlas1D; index1D++) {
@@ -74,29 +68,23 @@ namespace ClassicalSharp.Textures {
 					                       0, index1D * elemSize, atlas, dst, elemSize);
 					index++;
 				}
-				TexIds[i] = gfx.CreateTexture(dst, true);
+				TexIds[i] = game.Graphics.CreateTexture(dst, true, game.Graphics.Mipmaps);
 			}
 		}
 		
-		public int CalcMaxUsedRow(TerrainAtlas2D atlas2D, BlockInfo info) {
-			int maxVerSize = Math.Min(4096, gfx.MaxTextureDimensions);
-			int verElements = maxVerSize / atlas2D.elementSize;
-			int totalElements = GetMaxUsedRow(info.textures) * TerrainAtlas2D.ElementsPerRow;
-			return Utils.CeilDiv(totalElements, verElements);
-		}
-		
-		int GetMaxUsedRow(byte[] textures) {
-			int maxElem = 0;
-			for (int i = 0; i < textures.Length; i++)
-				maxElem = Math.Max(maxElem, textures[i]);
-			return (maxElem >> 4) + 1;
+		public int UsedAtlasesCount() {
+			int maxTexLoc = 0;
+			for (int i = 0; i < BlockInfo.textures.Length; i++) {
+				maxTexLoc = Math.Max(maxTexLoc, BlockInfo.textures[i]);
+			}
+			return Get1DIndex(maxTexLoc) + 1;
 		}
 		
 		public void Dispose() {
 			if (TexIds == null) return;
 			
 			for (int i = 0; i < TexIds.Length; i++) {
-				gfx.DeleteTexture(ref TexIds[i]);
+				game.Graphics.DeleteTexture(ref TexIds[i]);
 			}
 		}
 	}

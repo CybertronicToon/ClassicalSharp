@@ -28,7 +28,7 @@ namespace ClassicalSharp.Gui.Screens {
 			}
 			
 			gfx.Texturing = true;
-			RenderMenuWidgets(delta);
+			RenderWidgets(widgets, delta);
 			
 			if (extendedHelp != null && extEndY <= extClipY)
 				extendedHelp.Render(delta);
@@ -36,8 +36,9 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		public override void Init() {
+			base.Init();
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 16, FontStyle.Regular);
+			regularFont = new Font(game.FontName, 16);
 			game.Keyboard.KeyRepeat = true;
 		}
 		
@@ -51,7 +52,7 @@ namespace ClassicalSharp.Gui.Screens {
 				game.Gui.SetNewScreen(null);
 				return true;
 			} else if ((key == Key.Enter || key == Key.KeypadEnter)
-			          && input != null) {
+			           && input != null) {
 				ChangeSetting();
 				return true;
 			}
@@ -71,13 +72,17 @@ namespace ClassicalSharp.Gui.Screens {
 			
 			extendedHelp.XOffset = game.Width / 2 - extendedHelp.Width / 2;
 			extendedHelp.YOffset = game.Height / 2 + extHelpY;
-			extendedHelp.CalculatePosition();
+			extendedHelp.Reposition();
+		}
+		
+		protected override void ContextLost() {
+			base.ContextLost();
+			InputClosed();
+			DisposeExtendedHelp();
 		}
 		
 		public override void Dispose() {
-			DisposeWidgets();
 			game.Keyboard.KeyRepeat = false;
-			DisposeExtendedHelp();
 			base.Dispose();
 		}
 		
@@ -85,7 +90,7 @@ namespace ClassicalSharp.Gui.Screens {
 		protected override void WidgetSelected(Widget widget) {
 			ButtonWidget button = widget as ButtonWidget;
 			if (selectedWidget == button || button == null ||
-			   button == widgets[widgets.Length - 2]) return;
+			    button == widgets[widgets.Length - 2]) return;
 			
 			selectedWidget = button;
 			if (targetWidget != null) return;
@@ -101,49 +106,37 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		protected virtual void InputOpened() { }
 		
-		protected virtual void InputClosed() { }
-		
-		protected ButtonWidget MakeOpt(int dir, int y, string text, ClickHandler onClick,
-		                               Func<Game, string> getter, Action<Game, string> setter) {
-			ButtonWidget widget = ButtonWidget.Create(game, 301, 41, text + ": " + getter(game), titleFont, onClick)
-				.SetLocation(Anchor.Centre, Anchor.Centre, 160 * dir, y);
-			widget.Metadata = text;
-			widget.GetValue = getter;
-			widget.SetValue = (g, v) => {
-				setter(g, v);
-				widget.SetText((string)widget.Metadata + ": " + getter(g));
-			};
-			return widget;
-		}
-		
-		protected ButtonWidget MakeBool(int dir, int y, string text, string optKey,
-		                                ClickHandler onClick, Func<Game, bool> getter, Action<Game, bool> setter) {
-			return MakeBool(dir, y, text, optKey, false, onClick, getter, setter);
-		}
-
-		protected ButtonWidget MakeBool(int dir, int y, string text, string optKey, bool invert,
-		                                ClickHandler onClick, Func<Game, bool> getter, Action<Game, bool> setter) {
-			string optName = text;
-			text = text + ": " + (getter(game) ? "ON" : "OFF");
-			ButtonWidget widget = ButtonWidget.Create(game, 301, 41, text, titleFont, onClick)
-				.SetLocation(Anchor.Centre, Anchor.Centre, 160 * dir, y);
-			widget.Metadata = optName;
-			widget.GetValue = g => getter(g) ? "yes" : "no";
-			string target = invert ? "no" : "yes";
+		protected virtual void InputClosed() {
+			if (input != null) input.Dispose();
+			widgets[widgets.Length - 2] = null;
+			input = null;
 			
-			widget.SetValue = (g, v) => {
-				setter(g, v == "yes");
-				Options.Set(optKey, v == target);
-				widget.SetText((string)widget.Metadata + ": " + (v == "yes" ? "ON" : "OFF"));
-			};
-			return widget;
+			int okIndex = widgets.Length - 1;
+			if (widgets[okIndex] != null) widgets[okIndex].Dispose();
+			widgets[okIndex] = null;
+		}
+		
+		protected ButtonWidget MakeOpt(int dir, int y, string optName, ClickHandler onClick,
+		                               ButtonValueGetter getter, ButtonValueSetter setter) {
+			ButtonWidget btn = ButtonWidget.Create(game, 300, optName + ": " + getter(game), titleFont, onClick)
+				.SetLocation(Anchor.Centre, Anchor.Centre, 160 * dir, y);
+			btn.OptName = optName;
+			btn.GetValue = getter;
+			btn.SetValue = setter;
+			return btn;
+		}
+		
+		protected static string GetBool(bool v) { return v ? "ON" : "OFF"; }
+		protected static bool SetBool(string v, string key) {
+			Options.Set(key, v == "ON");
+			return v == "ON";
 		}
 		
 		void ShowExtendedHelp() {
 			bool canShow = input == null && selectedWidget != null && descriptions != null;
 			if (!canShow) return;
 			
-			int index = Array.IndexOf<Widget>(widgets, selectedWidget);
+			int index = IndexOfWidget(selectedWidget);
 			if (index < 0 || index >= descriptions.Length) return;
 			string[] desc = descriptions[index];
 			if (desc == null) return;
@@ -162,7 +155,7 @@ namespace ClassicalSharp.Gui.Screens {
 			
 			extendedHelp.XOffset = game.Width / 2 - extendedHelp.Width / 2;
 			extendedHelp.YOffset = game.Height / 2 + extHelpY;
-			extendedHelp.CalculatePosition();
+			extendedHelp.Reposition();
 		}
 		
 		void DisposeExtendedHelp() {
@@ -180,11 +173,11 @@ namespace ClassicalSharp.Gui.Screens {
 			if (button == null) return;
 			DisposeExtendedHelp();
 			
-			int index = Array.IndexOf<Widget>(widgets, button);
+			int index = IndexOfWidget(button);
 			MenuInputValidator validator = validators[index];
 			if (validator is BooleanValidator) {
 				string value = button.GetValue(game);
-				button.SetValue(game, value == "yes" ? "no" : "yes");
+				SetButtonValue(button, value == "ON" ? "OFF" : "ON");
 				UpdateDescription(button);
 				return;
 			} else if (validator is EnumValidator) {
@@ -194,7 +187,7 @@ namespace ClassicalSharp.Gui.Screens {
 			}
 			
 			targetWidget = selectedWidget;
-			if (input != null) input.Dispose();
+			InputClosed();
 			
 			input = MenuInputWidget.Create(game, 400, 30,
 			                               button.GetValue(game), regularFont, validator)
@@ -203,7 +196,7 @@ namespace ClassicalSharp.Gui.Screens {
 			input.OnClick = InputClick;
 			
 			widgets[widgets.Length - 2] = input;
-			widgets[widgets.Length - 1] = ButtonWidget.Create(game, 40, 30, "OK", titleFont, OnWidgetClick)
+			widgets[widgets.Length - 1] = ButtonWidget.Create(game, 40, "OK", titleFont, OnWidgetClick)
 				.SetLocation(Anchor.Centre, Anchor.Centre, 240, 110);
 
 			InputOpened();
@@ -213,40 +206,42 @@ namespace ClassicalSharp.Gui.Screens {
 		void InputClick(Game game, Widget widget, MouseButton btn, int x, int y) {
 			if (btn != MouseButton.Left) return;
 			widget.HandlesMouseClick(x, y, btn);
-		}		
+		}
 		
 		void HandleEnumOption(ButtonWidget button, Type type) {
-			string value = button.GetValue(game);
-			int enumValue = (int)Enum.Parse(type, value, true);
-			enumValue++;
+			string rawName = button.GetValue(game);
+			int value = (int)Enum.Parse(type, rawName, true);
+			value++;
 			// go back to first value
-			if (!Enum.IsDefined(type, enumValue))
-				enumValue = 0;
-			button.SetValue(game, Enum.GetName(type, enumValue));
+			if (!Enum.IsDefined(type, value)) value = 0;
+			
+			SetButtonValue(button, Enum.GetName(type, value));
 			UpdateDescription(button);
 		}
 		
 		void ChangeSetting() {
 			string text = input.Text.ToString();
-			if (((MenuInputWidget)input).Validator.IsValidValue(text))
-				targetWidget.SetValue(game, text);
+			if (((MenuInputWidget)input).Validator.IsValidValue(text)) {
+				SetButtonValue(targetWidget, text);
+			}
 			
-			DisposeWidgets();
 			UpdateDescription(targetWidget);
 			targetWidget = null;
 			InputClosed();
 		}
 		
-		void DisposeWidgets() {
-			if (input != null)
-				input.Dispose();
-			widgets[widgets.Length - 2] = null;
-			input = null;
-			
-			int okayIndex = widgets.Length - 1;
-			if (widgets[okayIndex] != null)
-				widgets[okayIndex].Dispose();
-			widgets[okayIndex] = null;
+		void SetButtonValue(ButtonWidget btn, string text) {
+			btn.SetValue(game, text);
+			int index = IndexOfWidget(btn);
+			// e.g. changing FPS invalidates all widgets
+			if (index >= 0) btn.SetText(btn.OptName + ": " + btn.GetValue(game));
+		}
+		
+		protected static string GetFPS(Game g) { return g.FpsLimit.ToString(); }
+		protected void SetFPS(Game g, string v) {
+			object raw = Enum.Parse(typeof(FpsLimitMethod), v);
+			g.SetFpsLimitMethod((FpsLimitMethod)raw);
+			Options.Set(OptionsKey.FpsLimit, v);
 		}
 	}
 }

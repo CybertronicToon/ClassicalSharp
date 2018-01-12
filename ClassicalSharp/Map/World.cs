@@ -4,16 +4,20 @@ using ClassicalSharp.Events;
 using ClassicalSharp.Renderers;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Map {
 	
 	/// <summary> Represents a fixed size map of blocks. Stores the raw block data,
 	/// heightmap, dimensions and various metadata such as environment settings. </summary>
-	public sealed partial class World {
+	public sealed class World {
 
-		Game game;
-		BlockInfo info;
-		public byte[] blocks;
-		public int Width, Height, Length;
+		public BlockID[] blocks;
+		public int Width, Height, Length, MaxX, MaxY, MaxZ;
 		
 		/// <summary> Contains the environment metadata for this world. </summary>
 		public WorldEnv Env;
@@ -21,35 +25,29 @@ namespace ClassicalSharp.Map {
 		/// <summary> Unique uuid/guid of this particular world. </summary>
 		public Guid Uuid;
 		
-		/// <summary> Whether this map is empty. </summary>
-		public bool IsNotLoaded = true;
-		
 		/// <summary> Current terrain.png or texture pack url of this map. </summary>
 		public string TextureUrl = null;
 		
 		public World(Game game) {
 			Env = new WorldEnv(game);
-			this.game = game;
-			info = game.BlockInfo;
 		}
 
 		/// <summary> Resets all of the properties to their defaults and raises the 'OnNewMap' event. </summary>
 		public void Reset() {
 			Env.Reset();
 			Width = Height = Length = 0;
-			IsNotLoaded = true;
-			
+			blocks = null;
 			Uuid = Guid.NewGuid();
-			game.WorldEvents.RaiseOnNewMap();
 		}
 		
-		/// <summary> Updates the underlying block array, heightmap, and dimensions of this map. </summary>
-		public void SetNewMap(byte[] blocks, int width, int height, int length) {
+		/// <summary> Updates the underlying block array, and dimensions of this map. </summary>
+		public void SetNewMap(BlockID[] blocks, int width, int height, int length) {
 			this.blocks = blocks;
-			this.Width = width;
-			this.Height = height;
-			this.Length = length;
-			IsNotLoaded = width == 0 || length == 0 || height == 0;
+			this.Width  = width;  MaxX = width  - 1;
+			this.Height = height; MaxY = height - 1;
+			this.Length = length; MaxZ = length - 1;
+			if (blocks.Length == 0) this.blocks = null;
+			
 			if (blocks.Length != (width * height * length))
 				throw new InvalidOperationException("Blocks array length does not match volume of map.");
 			
@@ -57,45 +55,37 @@ namespace ClassicalSharp.Map {
 			if (Env.CloudHeight == -1) Env.CloudHeight = height + 2;
 		}
 		
-		/// <summary> Sets the block at the given world coordinates without bounds checking,
-		/// and also recalculates the heightmap for the given (x,z) column.	</summary>
-		public void SetBlock(int x, int y, int z, byte blockId) {
-			int index = (y * Length + z) * Width + x;
-			byte oldBlock = blocks[index];
-			blocks[index] = blockId;
-			game.Lighting.UpdateLight(x, y, z, oldBlock, blockId);
-			
-			WeatherRenderer weather = game.WeatherRenderer;
-			if (weather.heightmap != null && !IsNotLoaded)
-				weather.UpdateHeight(x, y, z, oldBlock, blockId);
+		/// <summary> Sets the block at the given world coordinates without bounds checking. </summary>
+		public void SetBlock(int x, int y, int z, BlockID blockId) {
+			blocks[(y * Length + z) * Width + x] = blockId;
 		}
 		
 		/// <summary> Sets the block at the given world coordinates without bounds checking,
 		/// and also recalculates the heightmap for the given (x,z) column.	</summary>
-		public void SetBlock(Vector3I p, byte blockId) {
-			SetBlock(p.X, p.Y, p.Z, blockId);
+		public void SetBlock(Vector3I p, BlockID blockId) {
+			blocks[(p.Y * Length + p.Z) * Width + p.X] = blockId;
 		}
 		
 		/// <summary> Returns the block at the given world coordinates without bounds checking. </summary>
-		public byte GetBlock(int x, int y, int z) {
+		public BlockID GetBlock(int x, int y, int z) {
 			return blocks[(y * Length + z) * Width + x];
 		}
 		
 		/// <summary> Returns the block at the given world coordinates without bounds checking. </summary>
-		public byte GetBlock(Vector3I p) {
+		public BlockID GetBlock(Vector3I p) {
 			return blocks[(p.Y * Length + p.Z) * Width + p.X];
 		}
 		
 		/// <summary> Returns the block at the given world coordinates with bounds checking,
 		/// returning 0 is the coordinates were outside the map. </summary>
-		public byte SafeGetBlock(int x, int y, int z) {
+		public BlockID SafeGetBlock(int x, int y, int z) {
 			return IsValidPos(x, y, z) ?
 				blocks[(y * Length + z) * Width + x] : Block.Air;
 		}
 		
 		/// <summary> Returns the block at the given world coordinates with bounds checking,
 		/// returning 0 is the coordinates were outside the map. </summary>
-		public byte SafeGetBlock(Vector3I p) {
+		public BlockID SafeGetBlock(Vector3I p) {
 			return IsValidPos(p.X, p.Y, p.Z) ?
 				blocks[(p.Y * Length + p.Z) * Width + p.X] : Block.Air;
 		}
@@ -125,7 +115,7 @@ namespace ClassicalSharp.Map {
 			return new Vector3I(x, y, z);
 		}
 		
-		public byte GetPhysicsBlock(int x, int y, int z) {
+		public BlockID GetPhysicsBlock(int x, int y, int z) {
 			if (x < 0 || x >= Width || z < 0 || z >= Length || y < 0) return Block.Bedrock;			
 			if (y >= Height) return Block.Air;
 			return blocks[(y * Length + z) * Width + x];

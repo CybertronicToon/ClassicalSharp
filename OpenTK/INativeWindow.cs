@@ -44,9 +44,6 @@ namespace OpenTK {
 		
 		/// <summary> Gets or sets the <see cref="System.Drawing.Icon"/> of the window. </summary>
 		Icon Icon { get; set; }
-
-		/// <summary> Gets or sets the title of the window. </summary>
-		string Title { get; set; }
 		
 		/// <summary> Gets a System.Boolean that indicates whether this window has input focus. </summary>
 		bool Focused { get; }
@@ -72,18 +69,6 @@ namespace OpenTK {
 		
 		/// <summary> Gets or sets a <see cref="System.Drawing.Size"/> structure that contains the external size of this window. </summary>
 		Size Size { get; set; }
-		
-		/// <summary> Gets or sets the horizontal location of this window on the desktop. </summary>
-		int X { get; set; }
-		
-		/// <summary> Gets or sets the vertical location of this window on the desktop. </summary>
-		int Y { get; set; }
-		
-		/// <summary> Gets or sets the external width of this window. </summary>
-		int Width { get; set; }
-		
-		/// <summary> Gets or sets the external height of this window. </summary>
-		int Height { get; set; }
 		
 		/// <summary> Gets or sets a <see cref="System.Drawing.Rectangle"/> structure that contains the internal bounds of this window, in client coordinates.
 		/// The internal bounds include the drawing area of the window, but exclude the titlebar and window borders. </summary>
@@ -121,42 +106,36 @@ namespace OpenTK {
 		bool CursorVisible { get; set; }
 
 		/// <summary> Occurs whenever the window is moved. </summary>
-		event EventHandler<EventArgs> Move;
+		event EventHandler Move;
 
 		/// <summary> Occurs whenever the window is resized. </summary>
-		event EventHandler<EventArgs> Resize;
+		event EventHandler Resize;
 
 		/// <summary> Occurs when the window is about to close. </summary>
 		event EventHandler<CancelEventArgs> Closing;
 
 		/// <summary> Occurs after the window has closed. </summary>
-		event EventHandler<EventArgs> Closed;
+		event EventHandler Closed;
 
 		/// <summary> Occurs when the window is disposed. </summary>
-		event EventHandler<EventArgs> Disposed;
-
-		/// <summary> Occurs when the <see cref="Icon"/> property of the window changes. </summary>
-		event EventHandler<EventArgs> IconChanged;
-
-		/// <summary> Occurs when the <see cref="Title"/> property of the window changes. </summary>
-		event EventHandler<EventArgs> TitleChanged;
+		event EventHandler Disposed;
 
 		/// <summary> Occurs when the <see cref="Visible"/> property of the window changes. </summary>
-		event EventHandler<EventArgs> VisibleChanged;
+		event EventHandler VisibleChanged;
 
 		/// <summary> Occurs when the <see cref="Focused"/> property of the window changes. </summary>
-		event EventHandler<EventArgs> FocusedChanged;
+		event EventHandler FocusedChanged;
 
 		/// <summary> Occurs when the <see cref="WindowState"/> property of the window changes. </summary>
-		event EventHandler<EventArgs> WindowStateChanged;
+		event EventHandler WindowStateChanged;
 
 		/// <summary> Occurs whenever a character is typed. </summary>
 		event EventHandler<KeyPressEventArgs> KeyPress;
 
 		/// <summary> Occurs whenever the mouse cursor leaves the window <see cref="Bounds"/>. </summary>
-		event EventHandler<EventArgs> MouseLeave;
+		event EventHandler MouseLeave;
 
 		/// <summary> Occurs whenever the mouse cursor enters the window <see cref="Bounds"/>. </summary>
-		event EventHandler<EventArgs> MouseEnter;
+		event EventHandler MouseEnter;
 	}
 }

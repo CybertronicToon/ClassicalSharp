@@ -37,6 +37,8 @@ using OpenTK.Platform;
 
 namespace OpenTK
 {
+	public enum GameWindowFlags { Default = 0 };
+	
 	/// <summary>
 	/// The GameWindow class contains cross-platform methods to create and render on an OpenGL
 	/// window, handle input and load resources.
@@ -90,8 +92,7 @@ namespace OpenTK
 		/// <param name="options">GameWindow options regarding window appearance and behavior.</param>
 		/// <param name="device">The OpenTK.Graphics.DisplayDevice to construct the GameWindow in.</param>
 		public GameWindow(int width, int height, GraphicsMode mode, string title, bool nullContext,
-		                  GameWindowFlags options, DisplayDevice device)
-			: base(width, height, title, options, mode, device) {
+		                  GameWindowFlags options, DisplayDevice device) : base(width, height, title, mode, device) {
 			try {
 				glContext = nullContext ? new NullContext() :
 					Factory.Default.CreateGLContext(mode, WindowInfo);
@@ -127,12 +128,6 @@ namespace OpenTK
 		/// <para>If you override this method, place a call to base.Exit(), to ensure proper OpenTK shutdown.</para> </remarks>
 		public virtual void Exit() {
 			Close();
-		}
-		
-		/// <summary> Makes the GraphicsContext current on the calling thread. </summary>
-		public void MakeCurrent() {
-			EnsureUndisposed();
-			Context.MakeCurrent(WindowInfo);
 		}
 		
 		/// <summary> Called when the NativeWindow is about to close. </summary>
@@ -276,13 +271,13 @@ namespace OpenTK
 		}
 		
 		/// <summary> Occurs before the window is displayed for the first time. </summary>
-		public event EventHandler<EventArgs> Load;
+		public event EventHandler Load;
 
 		/// <summary> Occurs when it is time to render a frame. </summary>
 		public event EventHandler<FrameEventArgs> RenderFrame;
 
 		/// <summary> Occurs before the window is destroyed. </summary>
-		public event EventHandler<EventArgs> Unload;
+		public event EventHandler Unload;
 		
 		/// <summary> Override to add custom cleanup logic. </summary>
 		/// <param name="manual">True, if this method was called by the application; false if this was called by the finalizer thread.</param>

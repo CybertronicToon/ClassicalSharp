@@ -3,19 +3,23 @@ using System;
 using System.Collections.Generic;
 using ClassicalSharp.Map;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Singleplayer {
 
 	public class FallingPhysics {
 		Game game;
 		PhysicsBase physics;
 		World map;
-		BlockInfo info;
 		int width, length, height, oneY;
 		
 		public FallingPhysics(Game game, PhysicsBase physics) {
 			this.game = game;
 			map = game.World;
-			info = game.BlockInfo;
 			this.physics = physics;
 			
 			physics.OnPlace[Block.Sand] = DoFalling;
@@ -33,12 +37,12 @@ namespace ClassicalSharp.Singleplayer {
 			oneY = width * length;
 		}
 
-		void DoFalling(int index, byte block) {
+		void DoFalling(int index, BlockID block) {
 			int found = -1, start = index;
 			// Find lowest air block
 			while (index >= oneY) {
 				index -= oneY;
-				byte other = map.blocks[index];
+				BlockID other = map.blocks[index];
 				if (other == Block.Air || (other >= Block.Water && other <= Block.StillLava))
 					found = index;
 				else

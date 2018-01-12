@@ -26,9 +26,9 @@ namespace ClassicalSharp.Model {
 		public void InitCache() {
 			vertices = new VertexP3fT2fC4b[24 * 12];
 			RegisterDefaultModels();
-			game.Events.TextureChanged += TextureChanged;
-			
 			ContextRecreated();
+			
+			game.Events.TextureChanged += TextureChanged;
 			game.Graphics.ContextLost += ContextLost;
 			game.Graphics.ContextRecreated += ContextRecreated;
 		}
@@ -38,8 +38,6 @@ namespace ClassicalSharp.Model {
 			model.Name = modelName;
 			model.Instance = instance;
 			Models.Add(model);
-			
-			instance.data = model;
 			instance.texIndex = GetTextureIndex(texName);
 		}
 		
@@ -60,11 +58,6 @@ namespace ClassicalSharp.Model {
 
 		
 		public IModel Get(string modelName) {
-			if (modelName == "block") return Models[0].Instance;
-			byte blockId;
-			if (Byte.TryParse(modelName, out blockId))
-				modelName = "block";
-
 			for (int i = 0; i < Models.Count; i++) {
 				CachedModel m = Models[i];
 				if (m.Name != modelName) continue;
@@ -74,18 +67,15 @@ namespace ClassicalSharp.Model {
 			return Models[0].Instance;
 		}
 		
-		public void Dispose() {
-			game.Events.TextureChanged -= TextureChanged;
-			for (int i = 0; i < Models.Count; i++)
-				Models[i].Instance.Dispose();
-			
+		public void Dispose() {			
 			for (int i = 0; i < Textures.Count; i++) {
 				CachedTexture tex = Textures[i];
 				gfx.DeleteTexture(ref tex.TexID);
 				Textures[i] = tex;
-			}
-			
+			}			
 			ContextLost();
+			
+			game.Events.TextureChanged -= TextureChanged;
 			game.Graphics.ContextLost -= ContextLost;
 			game.Graphics.ContextRecreated -= ContextRecreated;
 		}
@@ -114,7 +104,11 @@ namespace ClassicalSharp.Model {
 			
 			Register("block", null, new BlockModel(game));
 			Register("chibi", "char.png", new ChibiModel(game));
-			Register("head", "char.png", new HumanoidHeadModel(game));
+			Register("head", "char.png", new HeadModel(game));
+			Register("sit", "char.png", new SittingModel(game));
+			Register("sitting", "char.png", new SittingModel(game));
+			Register("arm", "char.png", new ArmModel(game));
+			Register("corpse", "char.png", new CorpseModel(game));
 		}
 
 		void TextureChanged(object sender, TextureEventArgs e) {

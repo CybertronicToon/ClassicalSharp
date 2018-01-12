@@ -19,8 +19,8 @@ namespace ClassicalSharp {
 					int flagIndex = (y << 4) | z;
 					int chunkIndex = (y + 1) * extChunkSize2 + (z + 1) * extChunkSize + (0 + 1);
 					for (int x = 0; x < 16; x++) {
-						byte block = chunk[chunkIndex];
-						if (info.Draw[block] == DrawType.Opaque) {
+						BlockID block = chunk[chunkIndex];
+						if (BlockInfo.FullOpaque[block]) {
 							didFlags[flagIndex] |= (1 << x);
 						} else if ((didFlags[flagIndex] & (1 << x)) == 0) {
 							FloodFill(didFlags, stack, i, ref solidX, ref solidY, ref solidZ);
@@ -50,8 +50,8 @@ namespace ClassicalSharp {
 				didFlags[flagIndex] |= (1 << x);
 				
 				int chunkIndex = (y + 1) * extChunkSize2 + (z + 1) * extChunkSize + (x + 1);
-				byte block = chunk[chunkIndex];
-				if (info.Draw[block] != DrawType.Opaque) {
+				BlockID block = chunk[chunkIndex];
+				if (BlockInfo.Draw[block] != DrawType.Opaque) {
 					if (x == 0)
 						tX0 = true;
 					else if ((didFlags[flagIndex] & (1 << (x - 1))) == 0)
@@ -73,17 +73,17 @@ namespace ClassicalSharp {
 						stack[index++] = bIndex + 16;
 				}
 				
-				if (!info.IsOpaqueY[block]) {					
+				if (!BlockInfo.IsOpaqueY[block]) {					
 					if (y == 0)
 						tY0 = true;
 					else if ((didFlags[flagIndex - 16] & (1 << x)) == 0 
-					        && !info.IsOpaqueY[chunk[chunkIndex - extChunkSize2]])
+					        && !BlockInfo.IsOpaqueY[chunk[chunkIndex - extChunkSize2]])
 						stack[index++] = bIndex - 256;
 					
 					if (y == 15)
 						tY1 = true;
 					else if ((didFlags[flagIndex + 16] & (1 << x)) == 0 
-					        && !info.IsOpaqueY[chunk[chunkIndex + extChunkSize2]])
+					        && !BlockInfo.IsOpaqueY[chunk[chunkIndex + extChunkSize2]])
 						stack[index++] = bIndex + 256;
 				}
 			}

@@ -48,18 +48,20 @@ namespace ClassicalSharp.Map {
 		
 		void ReadCustomBlocks(Stream s, int width, int height, int length, byte[] blocks) {
 			byte[] chunk = new byte[16 * 16 * 16];
+			byte[] data = new byte[1];
 			
 			for (int y = 0; y < height; y += 16)
 				for (int z = 0; z < length; z += 16)
 					for (int x = 0; x < width; x += 16) 
 			{
-				if (s.ReadByte() != 1) continue;
+				int read = s.Read(data, 0, 1);
+				if (read == 0 || data[0] != 1) continue;
 				s.Read(chunk, 0, chunk.Length);
 				
 				int baseIndex = (y * length + z) * width + x;
 				for (int i = 0; i < chunk.Length; i++) {
-					int bx = i & 0xF, by = (i >> 8) & 0xF, bz = (i >> 4) & 0xF;
-					int index = baseIndex + (by * length + bz) * width + bx;
+					int xx = i & 0xF, yy = (i >> 8) & 0xF, zz = (i >> 4) & 0xF;
+					int index = baseIndex + (yy * length + zz) * width + xx;
 					
 					if (blocks[index] != customTile) continue;
 					blocks[index] = chunk[i];

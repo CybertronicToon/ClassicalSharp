@@ -1,6 +1,7 @@
 ﻿// ClassicalSharp copyright 2014-2016 UnknownShadow200 | Licensed under MIT
 using System;
 using System.IO;
+using ClassicalSharp;
 using ClassicalSharp.Network;
 using SharpWave;
 using SharpWave.Codecs.Vorbis;
@@ -10,16 +11,14 @@ namespace Launcher.Patcher {
 	public sealed class SoundPatcher {
 
 		string[] files, identifiers;
-		string prefix, nextAction;
+		string prefix;
 		public bool Done;
 		
-		public SoundPatcher(string[] files, string prefix, string nextAction) {
+		public SoundPatcher(string[] files, string prefix) {
 			this.files = files;
 			this.prefix = prefix;
-			this.nextAction = nextAction;
 		}
 		
-		const StringComparison comp = StringComparison.OrdinalIgnoreCase;
 		public void FetchFiles(string baseUrl, string altBaseUrl, 
 		                       ResourceFetcher fetcher, bool allExist) {
 			if (allExist) { Done = true; return; }
@@ -31,29 +30,27 @@ namespace Launcher.Patcher {
 			for (int i = 0; i < files.Length; i++) {
 				string loc = files[i][0] == 'A' ? baseUrl : altBaseUrl;
 				string url = loc + files[i].Substring(1) + ".ogg";
-				fetcher.downloader.DownloadData(url, false, identifiers[i]);
+				fetcher.QueueItem(url, identifiers[i]);
 			}
 		}
 		
 		public bool CheckDownloaded(ResourceFetcher fetcher, Action<string> setStatus) {
 			if (Done) return true;
 			for (int i = 0; i < identifiers.Length; i++) {
-				DownloadedItem item;
+				Request item;
 				if (fetcher.downloader.TryGetItem(identifiers[i], out item)) {
-					Console.WriteLine("got sound " + identifiers[i]);
+					fetcher.FilesToDownload.RemoveAt(0);
+					Utils.LogDebug("got sound " + identifiers[i]);
+					
 					if (item.Data == null) {
 						setStatus("&cFailed to download " + identifiers[i]);
-						return false;
-					}
-					DecodeSound(files[i].Substring(1), (byte[])item.Data);
-					
-					// TODO: setStatus(next);
-					if (i == identifiers.Length - 1) {
-						Done = true;
-						setStatus(fetcher.MakeNext(nextAction));
 					} else {
-						setStatus(fetcher.MakeNext(identifiers[i + 1]));
+						DecodeSound(files[i].Substring(1), (byte[])item.Data);
 					}
+					
+					if (i == identifiers.Length - 1)
+						Done = true;
+					setStatus(fetcher.MakeNext());
 				}
 			}
 			return true;
@@ -85,11 +82,11 @@ namespace Launcher.Patcher {
 			WriteFourCC(w, "fmt ");
 			w.Write(16);
 			w.Write((ushort)1); // audio format, PCM
-			w.Write((ushort)data.Channels);
-			w.Write(data.Frequency);
-			w.Write((data.Frequency * data.Channels * data.BitsPerSample) / 8); // byte rate
-			w.Write((ushort)((data.Channels * data.BitsPerSample) / 8)); // block align
-			w.Write((ushort)data.BitsPerSample);
+			w.Write((ushort)data.Last.Channels);
+			w.Write(data.Last.SampleRate);
+			w.Write((data.Last.SampleRate * data.Last.Channels * data.Last.BitsPerSample) / 8); // byte rate
+			w.Write((ushort)((data.Last.Channels * data.Last.BitsPerSample) / 8)); // block align
+			w.Write((ushort)data.Last.BitsPerSample);
 			
 			WriteFourCC(w, "data");
 			w.Write((int)(stream.Length - 44));

@@ -22,13 +22,13 @@ using System;
 
 namespace SharpDX.Direct3D9 {
 	
-	public enum BackBufferType : int {	
-		Mono = 0,		
-		Left = 1,		
+	public enum BackBufferType : int {
+		Mono = 0,
+		Left = 1,
 		Right = 2,
 	}
 	
-	public enum Blend : int {		
+	public enum Blend : int {
 		Zero = 1,
 		One = 2,
 
@@ -91,7 +91,7 @@ namespace SharpDX.Direct3D9 {
 	public enum ClearFlags : int {
 		Target = 1,
 		ZBuffer = 2,
-	}	
+	}
 	
 	[Flags]
 	public enum ColorWriteEnable : int {
@@ -213,9 +213,10 @@ namespace SharpDX.Direct3D9 {
 		D32 = 71,
 		D15S1 = 73,
 		D24S8 = 75,
-		D24X8 = 77,
+		D24X8 = 77,		
 		D24X4S4 = 79,
 		D16 = 80,
+		D32F_Lockable = 82,
 		VertexData = 100,
 		Index16 = 101,
 		Index32 = 102,
@@ -362,6 +363,14 @@ namespace SharpDX.Direct3D9 {
 		SlopeScaleDepthBias = 175,
 		AntialiasedLineEnable = 176,
 	}
+	
+	public enum SamplerState : int {
+		MagFilter = 5,
+		MinFilter = 6,
+		MipFilter = 7,
+		MipMapLODBias  = 8,
+		MaxMipLevel = 9,
+	}
 
 	[Flags]
 	public enum ShadeCaps : int {
@@ -413,6 +422,12 @@ namespace SharpDX.Direct3D9 {
 		NoProjectedBumpEnvironment = 2097152,
 	}
 	
+	public enum TextureFilter : int {
+		None = 0,
+		Point = 1,
+		Linear = 2,
+	}
+	
 	public enum TextureStage : int {
 		AlphaOperation = 4,
 		TextureTransformFlags = 24,
@@ -444,6 +459,7 @@ namespace SharpDX.Direct3D9 {
 		WriteOnly = 8,
 		SoftwareProcessing = 16,
 		None = 0,
+		AutoGenMipmap = 1024,
 	}
 	
 	[Flags]

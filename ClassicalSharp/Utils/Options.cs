@@ -5,28 +5,40 @@ using System.IO;
 using ClassicalSharp.Textures;
 
 namespace ClassicalSharp {
-	
+
 	public static class OptionsKey {
-		
-		public const string ViewDist = "viewdist";
-		public const string DefaultTexturePack = "defaulttexpack";
-		public const string SingleplayerPhysics = "singleplayerphysics";
+		#if !LAUNCHER
 		public const string UseMusic = "usemusic";
 		public const string UseSound = "usesound";
+		public const string MusicVolume = "musicvolume";
+		public const string SoundsVolume = "soundsvolume";
+		public const string ForceOpenAL = "forceopenal";
+		public const string ForceOldOpenGL = "force-oldgl";
+		
+		public const string ViewDist = "viewdist";
+		public const string BlockPhysics = "singleplayerphysics";
 		public const string NamesMode = "namesmode";
 		public const string InvertMouse = "invertmouse";
 		public const string Sensitivity = "mousesensitivity";
 		public const string FpsLimit = "fpslimit";
+		#endif
+		public const string DefaultTexturePack = "defaulttexpack";
 		public const string AutoCloseLauncher = "autocloselauncher";
+		#if !LAUNCHER
 		public const string ViewBobbing = "viewbobbing";
 		public const string EntityShadow = "entityshadow";
 		public const string RenderType = "normal";
 		public const string SmoothLighting = "gfx-smoothlighting";
+		public const string Mipmaps = "gfx-mipmaps";
 		public const string SurvivalMode = "game-survivalmode";
+		public const string ChatLogging = "chat-logging";
+		public const string WindowWidth = "window-width";
+		public const string WindowHeight = "window-height";
 		
-		public const string HacksEnabled = "hacks-hacksenabled";
+		public const string HacksOn = "hacks-hacksenabled";
 		public const string FieldOfView = "hacks-fov";
 		public const string Speed = "hacks-speedmultiplier";
+		public const string JumpVelocity = "hacks-jumpvelocity";
 		public const string ModifiableLiquids = "hacks-liquidsbreakable";
 		public const string PushbackPlacing = "hacks-pushbackplacing";
 		public const string NoclipSlide = "hacks-noclipslide";
@@ -38,40 +50,58 @@ namespace ClassicalSharp {
 		public const string ShowBlockInHand = "gui-blockinhand";
 		public const string ChatLines = "gui-chatlines";
 		public const string ClickableChat = "gui-chatclickable";
-		public const string ArialChatFont = "gui-arialchatfont";
+		#endif
+		public const string UseChatFont = "gui-arialchatfont";
+		#if !LAUNCHER
 		public const string HotbarScale = "gui-hotbarscale";
 		public const string InventoryScale = "gui-inventoryscale";
 		public const string ChatScale = "gui-chatscale";
 		public const string ShowFPS = "gui-showfps";
 		public const string FontName = "gui-fontname";
-		public const string BlackTextShadows = "gui-blacktextshadows";
+		public const string BlackText = "gui-blacktextshadows";
 		
-		public const string AllowCustomBlocks = "nostalgia-customblocks";
+		public const string UseCustomBlocks = "nostalgia-customblocks";
 		public const string UseCPE = "nostalgia-usecpe";
-		public const string AllowServerTextures = "nostalgia-servertextures";
+		public const string UseServerTextures = "nostalgia-servertextures";
 		public const string UseClassicGui = "nostalgia-classicgui";
 		public const string SimpleArmsAnim = "nostalgia-simplearms";
 		public const string UseClassicTabList = "nostalgia-classictablist";
 		public const string UseClassicOptions = "nostalgia-classicoptions";
 		public const string AllowClassicHacks = "nostalgia-hacks";
+		public const string ClassicArmModel = "nostalgia-classicarm";
 	}
-	
 	public enum FpsLimitMethod {
 		LimitVSync, Limit30FPS, Limit60FPS, Limit120FPS, LimitNone,
+		#endif
 	}
+
 	
 	public static class Options {
 		
-		public static Dictionary<string, string> OptionsSet = new Dictionary<string, string>();
+		public static List<string> OptionsKeys = new List<string>();
+		public static List<string> OptionsValues = new List<string>();
 		public static List<string> OptionsChanged = new List<string>();
 		const string Filename = "options.txt";
 		
+		static bool IsChangedOption(string key) {
+			for (int i = 0; i < OptionsChanged.Count; i++) {
+				if (Utils.CaselessEquals(key, OptionsChanged[i])) return true;
+			}
+			return false;
+		}
+		
 		static bool TryGetValue(string key, out string value) {
-			if (OptionsSet.TryGetValue(key, out value)) return true;
-			int index = key.IndexOf('-');
+			value = null;		
+			int i = FindOption(key);
+			if (i >= 0) { value = OptionsValues[i]; return true; }
 			
-			if (index == -1) return false;
-			return OptionsSet.TryGetValue(key.Substring(index + 1), out value);
+			int sepIndex = key.IndexOf('-');
+			if (sepIndex == -1) return false;
+			
+			key = key.Substring(sepIndex + 1);
+			i = FindOption(key);
+			if (i >= 0) { value = OptionsValues[i]; return true; }
+			return false;
 		}
 		
 		public static string Get(string key) {
@@ -96,67 +126,81 @@ namespace ClassicalSharp {
 				return defValue;
 			return valueBool;
 		}
-		
+
+		#if !LAUNCHER
 		public static float GetFloat(string key, float min, float max, float defValue) {
 			string value;
 			float valueFloat = 0;
-			if (!TryGetValue(key, out value) || !Single.TryParse(value, out valueFloat))
+			if (!TryGetValue(key, out value) || !Utils.TryParseDecimal(value, out valueFloat))
 				return defValue;
 			Utils.Clamp(ref valueFloat, min, max);
 			return valueFloat;
 		}
 		
 		public static T GetEnum<T>(string key, T defValue) {
-			string value = Get(key.ToLower());
-			if (value == null) {
-				Set(key, defValue);
-				return defValue;
-			}
+			string value = Get(key);
+			if (value == null) return defValue;
 			
 			T mapping;
-			if (!Utils.TryParseEnum(value, defValue, out mapping))
-				Set(key, defValue);
+			if (!Utils.TryParseEnum(value, defValue, out mapping)) {
+				Set(key, defValue.ToString());
+				mapping = defValue;
+			}
 			return mapping;
 		}
+		#endif
 		
+		static int FindOption(string key) {
+			for (int i = 0; i < OptionsKeys.Count; i++) {
+				if (Utils.CaselessEquals(OptionsKeys[i], key)) return i;
+			}
+			return -1;
+		}
+		
+		public static void Set(string key, int value)  { Set(key, value.ToString()); }
+		public static void Set(string key, bool value) { Set(key, value.ToString()); }
 		public static void Set(string key, string value) {
-			key = key.ToLower();
-			if (value != null) {
-				OptionsSet[key] = value;
+			if (value == null) {
+				int i = FindOption(key);
+				if (i >= 0) RemoveOption(i);
 			} else {
-				OptionsSet.Remove(key);
+				SetOption(key, value);
 			}
 			
-			if (!OptionsChanged.Contains(key))
+			if (!IsChangedOption(key)) {
 				OptionsChanged.Add(key);
+			}
 		}
 		
-		public static void Set<T>(string key, T value) {
-			key = key.ToLower();
-			if (value != null) {
-				OptionsSet[key] = value.ToString();
+		static void SetOption(string key, string value) {
+			int i = FindOption(key);
+			if (i >= 0) {
+				OptionsValues[i] = value;
 			} else {
-				OptionsSet.Remove(key);
+				OptionsKeys.Add(key);
+				OptionsValues.Add(value);
 			}
-			
-			if (!OptionsChanged.Contains(key))
-				OptionsChanged.Add(key);
 		}
+		
+		static void RemoveOption(int i) {
+			OptionsKeys.RemoveAt(i);
+			OptionsValues.RemoveAt(i);
+		}
+		
 		
 		public static bool Load() {
 			// Both of these are from when running from the launcher
 			if (Program.AppDirectory == null)
 				Program.AppDirectory = AppDomain.CurrentDomain.BaseDirectory;
-			string defZip = Path.Combine(Program.AppDirectory, "default.zip");
-			string texDir = Path.Combine(Program.AppDirectory, TexturePack.Dir);
-			if (File.Exists(defZip) || !Directory.Exists(texDir))
-				Program.CleanupMainDirectory();
+			Program.CleanupMainDirectory();
 			
 			try {
 				string path = Path.Combine(Program.AppDirectory, Filename);
 				using (Stream fs = File.OpenRead(path))
 					using (StreamReader reader = new StreamReader(fs, false))
+				{
 						LoadFrom(reader);
+				}
 				return true;
 			} catch (FileNotFoundException) {
 				return true;
@@ -167,16 +211,14 @@ namespace ClassicalSharp {
 		}
 		
 		static void LoadFrom(StreamReader reader) {
-			string line;
 			// remove all the unchanged options
-			List<string> toRemove = new List<string>();
-			foreach (KeyValuePair<string, string> kvp in OptionsSet) {
-				if (!OptionsChanged.Contains(kvp.Key))
-					toRemove.Add(kvp.Key);
+			for (int i = OptionsKeys.Count - 1; i >= 0; i--) {
+				string key = OptionsKeys[i];
+				if (IsChangedOption(key)) continue;
+				RemoveOption(i);
 			}
-			for (int i = 0; i < toRemove.Count; i++)
-				OptionsSet.Remove(toRemove[i]);
-			
+
+			string line;
 			while ((line = reader.ReadLine()) != null) {
 				if (line.Length == 0 || line[0] == '#') continue;
 				
@@ -187,8 +229,10 @@ namespace ClassicalSharp {
 				sepIndex++;
 				if (sepIndex == line.Length) continue;
 				string value = line.Substring(sepIndex, line.Length - sepIndex);
-				if (!OptionsChanged.Contains(key))
-					OptionsSet[key] = value;
+				
+				if (!IsChangedOption(key)) {
+					SetOption(key, value);
+				}
 			}
 		}
 		
@@ -210,10 +254,10 @@ namespace ClassicalSharp {
 		}
 		
 		static void SaveTo(StreamWriter writer) {
-			foreach (KeyValuePair<string, string> pair in OptionsSet) {
-				writer.Write(pair.Key);
+			for (int i = 0; i < OptionsKeys.Count; i++) {
+				writer.Write(OptionsKeys[i]);
 				writer.Write('=');
-				writer.Write(pair.Value);
+				writer.Write(OptionsValues[i]);
 				writer.WriteLine();
 			}
 		}

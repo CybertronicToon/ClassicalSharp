@@ -27,8 +27,7 @@ namespace ClassicalSharp.Textures {
 		public bool Load() {
 			string path = Path.Combine(Program.AppDirectory, folder);
 			path = Path.Combine(path, file);
-			if (!File.Exists(path))
-				return true;
+			if (!File.Exists(path)) return true;
 			
 			try {
 				using (Stream fs = File.OpenRead(path))
@@ -37,7 +36,7 @@ namespace ClassicalSharp.Textures {
 					string line;
 					while ((line = reader.ReadLine()) != null) {
 						line = line.Trim();
-						if (line.Length == 0 || line[0] == '#') continue;
+						if (line.Length == 0) continue;
 						Entries.Add(line);
 					}
 				}

@@ -6,17 +6,23 @@
 using System;
 using System.Collections.Generic;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Generator {
 	
 	public sealed partial class NotchyGenerator {
 		
-		void FillOblateSpheroid(int x, int y, int z, float radius, byte block) {
+		void FillOblateSpheroid(int x, int y, int z, float radius, BlockID block) {
 			int xStart = Utils.Floor(Math.Max(x - radius, 0));
-			int xEnd = Utils.Floor(Math.Min(x + radius, width - 1));
+			int xEnd = Utils.Floor(Math.Min(x + radius, Width - 1));
 			int yStart = Utils.Floor(Math.Max(y - radius, 0));
-			int yEnd = Utils.Floor(Math.Min(y + radius, height - 1));
+			int yEnd = Utils.Floor(Math.Min(y + radius, Height - 1));
 			int zStart = Utils.Floor(Math.Max(z - radius, 0));
-			int zEnd = Utils.Floor(Math.Min(z + radius, length - 1));
+			int zEnd = Utils.Floor(Math.Min(z + radius, Length - 1));
 			float radiusSq = radius * radius;
 			
 			for (int yy = yStart; yy <= yEnd; yy++)
@@ -25,28 +31,31 @@ namespace ClassicalSharp.Generator {
 			{
 				int dx = xx - x, dy = yy - y, dz = zz - z;
 				if ((dx * dx + 2 * dy * dy + dz * dz) < radiusSq) {
-					int index = (yy * length + zz) * width + xx;
+					int index = (yy * Length + zz) * Width + xx;
 					if (blocks[index] == Block.Stone)
 						blocks[index] = block;
 				}
 			}
 		}
 		
-		void FloodFill(int startIndex, byte block) {
+		void FloodFill(int startIndex, BlockID block) {
+			if (startIndex < 0) return; // y below map, immediately ignore
 			FastIntStack stack = new FastIntStack(4);
-			stack.Push(startIndex);
+			stack.Push(startIndex);	
+			
 			while (stack.Size > 0) {
 				int index = stack.Pop();
-				if (blocks[index] != 0) continue;				
+				if (blocks[index] != Block.Air) continue;
 				blocks[index] = block;
 				
-				int x = index % width;
+				int x = index % Width;
 				int y = index / oneY;
-				int z = (index / width) % length;
+				int z = (index / Width) % Length;
+				
 				if (x > 0) stack.Push(index - 1);
-				if (x < width - 1) stack.Push(index + 1);
-				if (z > 0) stack.Push(index - width);
-				if (z < length - 1) stack.Push(index + width);
+				if (x < Width - 1) stack.Push(index + 1);
+				if (z > 0) stack.Push(index - Width);
+				if (z < Length - 1) stack.Push(index + Width);
 				if (y > 0) stack.Push(index - oneY);
 			}
 		}
@@ -82,33 +91,33 @@ namespace ClassicalSharp.Generator {
 		const long value = 0x5DEECE66DL;
 		const long mask = (1L << 48) - 1;
 		
-		public JavaRandom(int seed) {
+		public JavaRandom(int seed) { SetSeed(seed); }
+		public void SetSeed(int seed) {
 			this.seed = (seed ^ value) & mask;
 		}
-		
-		int Raw(int bits) {
-			seed = (seed * value + 0xBL) & mask;
-			return (int)((ulong)seed >> (48 - bits));
-		}
-		
-		public int Next() { return Raw(32); }
 		
 		public int Next(int min, int max) { return min + Next(max - min); }
 		
 		public int Next(int n) {
-			if ((n & -n) == n)  // i.e., n is a power of 2
-				return (int)((n * (long)Raw(31)) >> 31);
+			if ((n & -n) == n) { // i.e., n is a power of 2
+				seed = (seed * value + 0xBL) & mask;
+				long raw = (long)((ulong)seed >> (48 - 31));
+				return (int)((n * raw) >> 31);
+			}
 
 			int bits, val;
 			do {
-				bits = Raw(31);
+				seed = (seed * value + 0xBL) & mask;
+				bits = (int)((ulong)seed >> (48 - 31));
 				val = bits % n;
 			} while (bits - val + (n - 1) < 0);
 			return val;
 		}
 		
 		public float NextFloat() {
-			return Raw(24) / ((float)(1 << 24));
+			seed = (seed * value + 0xBL) & mask;
+			int raw = (int)((ulong)seed >> (48 - 24));
+			return raw / ((float)(1 << 24));
 		}
 	}
 }

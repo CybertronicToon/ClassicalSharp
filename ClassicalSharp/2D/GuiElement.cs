@@ -4,20 +4,15 @@ using ClassicalSharp.Gui.Widgets;
 using ClassicalSharp.GraphicsAPI;
 using OpenTK.Input;
 
-namespace ClassicalSharp {	
-	public enum Anchor { LeftOrTop, Centre, BottomOrRight, }	
-}
-
 namespace ClassicalSharp.Gui {
+	public delegate void SimpleClickHandler(Game g, Widget w);
+		
 	public delegate void ClickHandler(Game g, Widget w, MouseButton btn, int mouseX, int mouseY);
 	
 	public abstract class GuiElement : IDisposable {
 		
 		protected Game game;
 		protected IGraphicsApi gfx;
-		
-		/// <summary> Object that represents any form of metadata attached to this widget. </summary>
-		public object Metadata = null;
 		
 		public GuiElement(Game game) {
 			this.game = game;
@@ -32,7 +27,7 @@ namespace ClassicalSharp.Gui {
 		
 		/// <summary> Causes the gui element to recreate all of its sub-elements and/or textures. </summary>
 		/// <remarks> Typically used when bitmap font changes. </remarks>
-		public void Recreate() { Dispose(); Init(); }
+		public virtual void Recreate() { Dispose(); Init(); }
 		
 		public virtual bool HandlesKeyDown(Key key) { return false; }
 		
@@ -44,7 +39,7 @@ namespace ClassicalSharp.Gui {
 		
 		public virtual bool HandlesMouseMove(int mouseX, int mouseY) { return false; }
 		
-		public virtual bool HandlesMouseScroll(int delta) { return false; }
+		public virtual bool HandlesMouseScroll(float delta) { return false; }
 		
 		public virtual bool HandlesMouseUp(int mouseX, int mouseY, MouseButton button) { return false; }
 		

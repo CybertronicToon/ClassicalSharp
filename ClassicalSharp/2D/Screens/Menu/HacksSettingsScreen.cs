@@ -17,64 +17,90 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		public override void Init() {
 			base.Init();
-			
-			widgets = new Widget[] {
-				// Column 1
-				MakeBool(-1, -150, "Hacks enabled", OptionsKey.HacksEnabled,
-				         OnWidgetClick, g => g.LocalPlayer.Hacks.Enabled,
-				         (g, v) => { g.LocalPlayer.Hacks.Enabled = v;
-				         	g.LocalPlayer.CheckHacksConsistency(); }),
-				
-				MakeOpt(-1, -100, "Speed multiplier", OnWidgetClick,
-				        g => g.LocalPlayer.Hacks.SpeedMultiplier.ToString("F2"),
-				        (g, v) => { g.LocalPlayer.Hacks.SpeedMultiplier = Utils.ParseDecimal(v);
-				        	Options.Set(OptionsKey.Speed, v); }),
-				
-				MakeBool(-1, -50, "Camera clipping", OptionsKey.CameraClipping,
-				         OnWidgetClick, g => g.CameraClipping, (g, v) => g.CameraClipping = v),
-				
-				MakeOpt(-1, 0, "Jump height", OnWidgetClick,
-				        g => g.LocalPlayer.JumpHeight.ToString("F3"),
-				        (g, v) => g.LocalPlayer.physics.CalculateJumpVelocity(true, Utils.ParseDecimal(v))),
-				
-				MakeBool(-1, 50, "WOM style hacks", OptionsKey.WOMStyleHacks,
-				         OnWidgetClick, g => g.LocalPlayer.Hacks.WOMStyleHacks,
-				         (g, v) => g.LocalPlayer.Hacks.WOMStyleHacks = v),
-				
-				// Column 2
-				MakeBool(1, -150, "Full block stepping", OptionsKey.FullBlockStep,
-				         OnWidgetClick, g => g.LocalPlayer.Hacks.FullBlockStep,
-				         (g, v) => g.LocalPlayer.Hacks.FullBlockStep = v),
-				
-				MakeBool(1, -100, "Modifiable liquids", OptionsKey.ModifiableLiquids,
-				         OnWidgetClick, g => g.ModifiableLiquids, (g, v) => g.ModifiableLiquids = v),
-				
-				MakeBool(1, -50, "Pushback placing", OptionsKey.PushbackPlacing,
-				         OnWidgetClick, g => g.LocalPlayer.Hacks.PushbackPlacing,
-				         (g, v) => g.LocalPlayer.Hacks.PushbackPlacing = v),
-				
-				MakeBool(1, 0, "Noclip slide", OptionsKey.NoclipSlide,
-				         OnWidgetClick, g => g.LocalPlayer.Hacks.NoclipSlide,
-				         (g, v) => g.LocalPlayer.Hacks.NoclipSlide = v),
-				
-				MakeOpt(1, 50, "Field of view", OnWidgetClick,
-				        g => g.Fov.ToString(),
-				        (g, v) => { g.Fov = Int32.Parse(v);
-				        	Options.Set(OptionsKey.FieldOfView, v);
-				        	g.UpdateProjection();
-				        }),
-				
-				null,
-				MakeBack(false, titleFont,
-				         (g, w) => g.Gui.SetNewScreen(new OptionsGroupScreen(g))),
-				null, null,
-			};
+			ContextRecreated();
 			
 			MakeDefaultValues();
 			MakeValidators();
 			MakeDescriptions();
 			game.Events.HackPermissionsChanged += CheckHacksAllowed;
+		}
+		
+		protected override void ContextRecreated() {
+			ClickHandler onClick = OnWidgetClick;
+			widgets = new Widget[] {
+				MakeOpt(-1, -150, "Hacks enabled",      onClick, GetHacks,    SetHacks),
+				MakeOpt(-1, -100, "Speed multiplier",   onClick, GetSpeed,    SetSpeed),
+				MakeOpt(-1, -50, "Camera clipping",     onClick, GetClipping, SetClipping),
+				MakeOpt(-1, 0, "Jump height",           onClick, GetJump,     SetJump),
+				MakeOpt(-1, 50, "WOM style hacks",      onClick, GetWOMHacks, SetWOMHacks),
+
+				MakeOpt(1, -150, "Full block stepping", onClick, GetFullStep, SetFullStep),
+				MakeOpt(1, -100, "Modifiable liquids",  onClick, GetLiquids,  SetLiquids),
+				MakeOpt(1, -50, "Pushback placing",     onClick, GetPushback, SetPushback),
+				MakeOpt(1, 0, "Noclip slide",           onClick, GetSlide,    SetSlide),
+				MakeOpt(1, 50, "Field of view",         onClick, GetFOV,      SetFOV),
+				
+				null,
+				MakeBack(false, titleFont, SwitchOptions),
+				null, null,
+			};
 			CheckHacksAllowed(null, null);
+		}
+		
+		static string GetHacks(Game g) { return GetBool(g.LocalPlayer.Hacks.Enabled); }
+		static void SetHacks(Game g, string v) { 
+			g.LocalPlayer.Hacks.Enabled = SetBool(v, OptionsKey.HacksOn);
+			g.LocalPlayer.CheckHacksConsistency();
+		}
+		
+		static string GetSpeed(Game g) { return g.LocalPlayer.Hacks.SpeedMultiplier.ToString("F2"); }
+		static void SetSpeed(Game g, string v) {
+			g.LocalPlayer.Hacks.SpeedMultiplier = Utils.ParseDecimal(v); 
+			Options.Set(OptionsKey.Speed, v);
+		}
+		
+		static string GetClipping(Game g) { return GetBool(g.CameraClipping); }
+		static void SetClipping(Game g, string v) { 
+			g.CameraClipping = SetBool(v, OptionsKey.CameraClipping); 
+		}
+		
+		static string GetJump(Game g) { return g.LocalPlayer.JumpHeight.ToString("F3"); }
+		static void SetJump(Game g, string v) {
+			g.LocalPlayer.physics.CalculateJumpVelocity(true, Utils.ParseDecimal(v));
+			float jumpVel = g.LocalPlayer.physics.jumpVel;
+			Options.Set(OptionsKey.JumpVelocity, jumpVel.ToString());
+		}		
+		
+		static string GetWOMHacks(Game g) { return GetBool(g.LocalPlayer.Hacks.WOMStyleHacks); }
+		static void SetWOMHacks(Game g, string v) { 
+			g.LocalPlayer.Hacks.WOMStyleHacks = SetBool(v, OptionsKey.WOMStyleHacks); 
+		}
+		
+		static string GetFullStep(Game g) { return GetBool(g.LocalPlayer.Hacks.FullBlockStep); }
+		static void SetFullStep(Game g, string v) { 
+			g.LocalPlayer.Hacks.FullBlockStep = SetBool(v, OptionsKey.FullBlockStep); 
+		}
+		
+		static string GetPushback(Game g) { return GetBool(g.LocalPlayer.Hacks.PushbackPlacing); }
+		static void SetPushback(Game g, string v) { 
+			g.LocalPlayer.Hacks.PushbackPlacing = SetBool(v, OptionsKey.PushbackPlacing); 
+		}
+		
+		static string GetLiquids(Game g) { return GetBool(g.ModifiableLiquids); }
+		static void SetLiquids(Game g, string v) { 
+			g.ModifiableLiquids = SetBool(v, OptionsKey.ModifiableLiquids); 
+		}
+		
+		static string GetSlide(Game g) { return GetBool(g.LocalPlayer.Hacks.NoclipSlide); }
+		static void SetSlide(Game g, string v) { 
+			g.LocalPlayer.Hacks.NoclipSlide = SetBool(v, OptionsKey.NoclipSlide); 
+		}
+		
+		static string GetFOV(Game g) { return g.Fov.ToString(); }
+		static void SetFOV(Game g, string v) {
+			g.Fov = Int32.Parse(v);
+			Options.Set(OptionsKey.FieldOfView, v);
+			g.UpdateProjection();
 		}
 		
 		void CheckHacksAllowed(object sender, EventArgs e) {
@@ -109,7 +135,7 @@ namespace ClassicalSharp.Gui.Screens {
 				new BooleanValidator(),
 				new RealValidator(0.1f, 50),
 				new BooleanValidator(),
-				new RealValidator(0.1f, 1024f),
+				new RealValidator(0.1f, 2048f),
 				new BooleanValidator(),
 				
 				new BooleanValidator(),
@@ -146,19 +172,20 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		protected override void InputClosed() {
+			base.InputClosed();
 			if (widgets[defaultIndex] != null)
 				widgets[defaultIndex].Dispose();
 			widgets[defaultIndex] = null;
 		}
 		
 		protected override void InputOpened() {
-			widgets[defaultIndex] = ButtonWidget.Create(game, 201, 40, "Default value", titleFont, DefaultButtonClick)
+			widgets[defaultIndex] = ButtonWidget.Create(game, 200, "Default value", titleFont, DefaultButtonClick)
 				.SetLocation(Anchor.Centre, Anchor.Centre, 0, 150);
 		}
 		
 		void DefaultButtonClick(Game game, Widget widget, MouseButton btn, int x, int y) {
 			if (btn != MouseButton.Left) return;
-			int index = Array.IndexOf<Widget>(widgets, targetWidget);
+			int index = IndexOfWidget(targetWidget);
 			string defValue = defaultValues[index];
 			
 			input.Clear();

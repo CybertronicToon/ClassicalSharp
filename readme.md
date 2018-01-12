@@ -1,7 +1,7 @@
 ClassicalSharp is a custom Minecraft Classic client written in C# that works on Windows, Linux and OSX.
 **It is not affiliated with (or supported by) Mojang AB, Minecraft, or Microsoft in any way.**
 
-![screenshot_n](https://cloud.githubusercontent.com/assets/6509348/15708889/df3f104a-2844-11e6-8901-69a9d55da2f1.png)
+![screenshot_n](http://i.imgur.com/FCiwl27.png)
 
 
 You can grab the latest stable binaries [here](https://github.com/UnknownShadow200/ClassicalSharp/releases).
@@ -18,7 +18,7 @@ It **does not** work with 'modern/premium' Minecraft servers.
 
 #### Requirements
 * Windows: .NET framework 2.0 or Mono. (Vista and later have .NET framework 2.0 built in)
-ClassicalSharp has been verified to work on Windows 2000, unsure about ME and 98.
+ClassicalSharp has been verified to work on Windows 2000 and later. The OpenGL build has been verified to work in a Windows 98 virtual machine, however has not been tested on real hardware running Windows 98.
 * Linux and Mac OSX: Either Wine or Mono.
 
 #### Instructions
@@ -38,6 +38,9 @@ If you are using Mono, you just need to type `mono Launcher.exe` into the termin
 *Also when using older mono versions, you may need to run `mozroots --import --sync` to import trusted root certificates, otherwise you will get an 'Error writing headers' exception.*
 
 *You must use either build using the Mono compiler or define `__MonoCS__` when building, otherwise you will get runtime errors when decompressing the map using Mono.*
+
+###### *Windows specific*
+*If you are stuck using the built-in OpenGL 1.1 software renderer, you can use the MESA software renderer from either [here](http://download.qt.io/development_releases/prebuilt/llvmpipe/windows/) or [here](https://wiki.qt.io/Cross_compiling_Mesa_for_Windows) for slightly better performance. Typically though, this occurs because you have not installed GPU drivers.*
 
 #### Tips
 * Press escape (after joining a world) to switch to the pause menu.

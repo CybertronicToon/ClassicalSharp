@@ -69,7 +69,7 @@ namespace OpenTK.Platform.MacOS {
 				IntPtr cgdevice = GetQuartzDevice(carbonWindow);
 
 				if (cgdevice == IntPtr.Zero)
-					cgdevice = QuartzDisplayDeviceDriver.MainDisplay;
+					cgdevice = QuartzDisplayDevice.MainDisplay;
 
 				OSStatus status = API.DMGetGDeviceByDisplayID(cgdevice, out gdevice, false);
 				
@@ -114,10 +114,10 @@ namespace OpenTK.Platform.MacOS {
 		{
 			IntPtr windowRef = carbonWindow.WindowRef;
 
-			if (!CarbonGLNative.WindowRefMap.ContainsKey(windowRef))
+			if (!CarbonGLNative.WindowRefs.ContainsKey(windowRef))
 				return IntPtr.Zero;
 
-			WeakReference nativeRef = CarbonGLNative.WindowRefMap[windowRef];
+			WeakReference nativeRef = CarbonGLNative.WindowRefs[windowRef];
 			if (!nativeRef.IsAlive)
 				return IntPtr.Zero;
 
@@ -126,8 +126,7 @@ namespace OpenTK.Platform.MacOS {
 			if (window == null)
 				return IntPtr.Zero;
 
-			return QuartzDisplayDeviceDriver.HandleTo(window.TargetDisplayDevice);
-
+			return QuartzDisplayDevice.HandleTo(window.TargetDisplayDevice);
 		}
 		
 		void SetDrawable(CarbonWindowInfo carbonWindow)
@@ -177,7 +176,7 @@ namespace OpenTK.Platform.MacOS {
 
 		private CarbonGLNative GetCarbonWindow(CarbonWindowInfo carbonWindow)
 		{
-			WeakReference r = CarbonGLNative.WindowRefMap[carbonWindow.WindowRef];
+			WeakReference r = CarbonGLNative.WindowRefs[carbonWindow.WindowRef];
 			return r.IsAlive ? (CarbonGLNative)r.Target : null;
 		}
 

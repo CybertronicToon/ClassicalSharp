@@ -9,48 +9,51 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		public OptionsGroupScreen(Game game) : base(game) {
 		}
+		
 		TextWidget descWidget;
+		string descText;
 		ButtonWidget selectedWidget;
 		
 		public override void Render(double delta) {
 			RenderMenuBounds();
 			gfx.Texturing = true;
-			RenderMenuWidgets(delta);
+			RenderWidgets(widgets, delta);
 			if (descWidget != null)
 				descWidget.Render(delta);
 			gfx.Texturing = false;
 		}
 		
 		public override void Init() {
+			base.Init();
 			game.Events.HackPermissionsChanged += CheckHacksAllowed;
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 16, FontStyle.Regular);
+			regularFont = new Font(game.FontName, 16);
+			ContextRecreated();
+		}
+		
+		protected override void ContextRecreated() {
+			widgets = new Widget[] {
+				Make(-1, -100, "Misc options...",      SwitchMiscOptions),
+				Make(-1,  -50, "Gui options...",       SwitchGuiOptions),
+				Make(-1,    0, "Graphics options...",  SwitchGfxOptions),
+				Make(-1,   50, "Controls...",          SwitchControls),
+				Make( 1,  -50, "Hacks settings...",    SwitchHacksOptions),
+				Make( 1,    0, "Env settings...",      SwitchEnvOptions),
+				Make( 1,   50, "Nostalgia options...", SwitchNostalgiaOptions),				
+				MakeBack(false, titleFont, SwitchPause),
+			};
 			
-			MakeNormal();
+			if (descWidget != null) MakeDescWidget(descText);		
 			CheckHacksAllowed(null, null);
 		}
 		
-		void MakeNormal() {
-			widgets = new Widget[] {
-				Make(-1, -100, "Misc options",
-				     (g, w) => g.Gui.SetNewScreen(new MiscOptionsScreen(g))),
-				Make(-1, -50, "Gui options",
-				     (g, w) => g.Gui.SetNewScreen(new GuiOptionsScreen(g))),
-				Make(-1, 0, "Graphics options",
-				     (g, w) => g.Gui.SetNewScreen(new GraphicsOptionsScreen(g))),
-				Make(-1, 50, "Controls",
-				     (g, w) => g.Gui.SetNewScreen(new NormalKeyBindingsScreen(g))),
-				Make(1, -50, "Hacks settings",
-				     (g, w) => g.Gui.SetNewScreen(new HacksSettingsScreen(g))),
-				Make(1, 0, "Env settings",
-				     (g, w) => g.Gui.SetNewScreen(new EnvSettingsScreen(g))),
-				Make(1, 50, "Nostalgia options",
-				     (g, w) => g.Gui.SetNewScreen(new NostalgiaScreen(g))),
-				
-				MakeBack(false, titleFont, 
-				         (g, w) => g.Gui.SetNewScreen(new PauseScreen(g))),
-			};
-		}
+		static void SwitchMiscOptions(Game g, Widget w) { g.Gui.SetNewScreen(new MiscOptionsScreen(g)); }
+		static void SwitchGuiOptions(Game g, Widget w) { g.Gui.SetNewScreen(new GuiOptionsScreen(g)); }
+		static void SwitchGfxOptions(Game g, Widget w) { g.Gui.SetNewScreen(new GraphicsOptionsScreen(g)); }
+		static void SwitchControls(Game g, Widget w) { g.Gui.SetNewScreen(new NormalKeyBindingsScreen(g)); }
+		static void SwitchHacksOptions(Game g, Widget w) { g.Gui.SetNewScreen(new HacksSettingsScreen(g)); }
+		static void SwitchEnvOptions(Game g, Widget w) { g.Gui.SetNewScreen(new EnvSettingsScreen(g)); }
+		static void SwitchNostalgiaOptions(Game g, Widget w) { g.Gui.SetNewScreen(new NostalgiaScreen(g)); }
 		
 		void CheckHacksAllowed(object sender, EventArgs e) {
 			if (game.UseClassicOptions) return;
@@ -66,15 +69,21 @@ namespace ClassicalSharp.Gui.Screens {
 			if (descWidget != null) descWidget.Dispose();
 			if (button == null) return;
 			
-			string text = descriptions[Array.IndexOf<Widget>(widgets, button)];
-			descWidget = TextWidget.Create(game, text, regularFont)
-				.SetLocation(Anchor.Centre, Anchor.Centre, 0, 100);
+			string text = descriptions[IndexOfWidget(button)];
+			MakeDescWidget(text);
 		}
 		
-		ButtonWidget Make(int dir, int y, string text, Action<Game, Widget> onClick) {
-			return ButtonWidget.Create(game, 301, 40, text, titleFont, LeftOnly(onClick))
+		void MakeDescWidget(string text) {
+			descWidget = TextWidget.Create(game, text, regularFont)
+				.SetLocation(Anchor.Centre, Anchor.Centre, 0, 100);
+			descText = text;
+		}
+		
+		ButtonWidget Make(int dir, int y, string text, SimpleClickHandler onClick) {
+			return ButtonWidget.Create(game, 300, text, titleFont, LeftOnly(onClick))
 				.SetLocation(Anchor.Centre, Anchor.Centre, dir * 160, y);
 		}
+		
 		
 		public override bool HandlesKeyDown(Key key) {
 			if (key == Key.Escape)
@@ -84,13 +93,16 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		public override void OnResize(int width, int height) {
 			if (descWidget != null)
-				descWidget.CalculatePosition();
+				descWidget.Reposition();
 			base.OnResize(width, height);
 		}
 		
+		protected override void ContextLost() {
+			base.ContextLost();
+			if (descWidget != null) descWidget.Dispose();
+		}
+		
 		public override void Dispose() {
-			if (descWidget != null)
-				descWidget.Dispose();
 			base.Dispose();
 			game.Events.HackPermissionsChanged -= CheckHacksAllowed;
 		}

@@ -153,6 +153,30 @@ namespace OpenTK {
 			result.Y = vec.Y * scale;
 			result.Z = vec.Z * scale;
 		}
+		
+		public static void Transform(ref Vector3 vec, ref Matrix4 mat, out Vector3 result) {
+			result.X = vec.X * mat.Row0.X + vec.Y * mat.Row1.X + vec.Z * mat.Row2.X + mat.Row3.X;
+			result.Y = vec.X * mat.Row0.Y + vec.Y * mat.Row1.Y + vec.Z * mat.Row2.Y + mat.Row3.Y;
+			result.Z = vec.X * mat.Row0.Z + vec.Y * mat.Row1.Z + vec.Z * mat.Row2.Z + mat.Row3.Z;
+		}
+		
+		public static void TransformX(float x, ref Matrix4 mat, out Vector3 result) {
+			result.X = x * mat.Row0.X + mat.Row3.X;
+			result.Y = x * mat.Row0.Y + mat.Row3.Y;
+			result.Z = x * mat.Row0.Z + mat.Row3.Z;
+		}
+		
+		public static void TransformY(float y, ref Matrix4 mat, out Vector3 result) {
+			result.X = y * mat.Row1.X + mat.Row3.X;
+			result.Y = y * mat.Row1.Y + mat.Row3.Y;
+			result.Z = y * mat.Row1.Z + mat.Row3.Z;
+		}
+		
+		public static void TransformZ(float z, ref Matrix4 mat, out Vector3 result) {
+			result.X = z * mat.Row2.X + mat.Row3.X;
+			result.Y = z * mat.Row2.Y + mat.Row3.Y;
+			result.Z = z * mat.Row2.Z + mat.Row3.Z;
+		}
 
 		public static Vector3 operator + (Vector3 left, Vector3 right) {
 			left.X += right.X;
@@ -205,10 +229,6 @@ namespace OpenTK {
 			return !left.Equals(right);
 		}
 
-		public override string ToString() {
-			return String.Format("({0}, {1}, {2})", X, Y, Z);
-		}
-
 		public override int GetHashCode() {
 			return X.GetHashCode() ^ Y.GetHashCode() ^ Z.GetHashCode();
 		}
@@ -219,6 +239,10 @@ namespace OpenTK {
 
 		public bool Equals(Vector3 other) {
 			return X == other.X && Y == other.Y && Z == other.Z;
+		}
+		
+		public override string ToString() {
+			return X + ", " + Y + ", " + Z;
 		}
 	}
 }

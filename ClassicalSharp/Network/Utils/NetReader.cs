@@ -1,6 +1,8 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
 using System.Net.Sockets;
+using ClassicalSharp.Entities;
+using OpenTK;
 
 namespace ClassicalSharp.Network {
 
@@ -8,6 +10,7 @@ namespace ClassicalSharp.Network {
 		
 		public byte[] buffer = new byte[4096 * 5];
 		public int index = 0, size = 0;
+		public bool ExtendedPositions;
 		Socket socket;
 		
 		public NetReader(Socket socket) {
@@ -71,24 +74,27 @@ namespace ClassicalSharp.Network {
 			index += length;
 			return data;
 		}
+		
+		public Vector3 ReadPosition(byte id) {
+			int x = 0, y = 0, z = 0;
+			if (ExtendedPositions) {
+				x = ReadInt32(); y = ReadInt32(); z = ReadInt32();
+			} else {
+				x = ReadInt16(); y = ReadInt16(); z = ReadInt16();
+			}
+			
+			float yAdj = (y - 51) / 32f; // We have to do this.
+			if (id == EntityList.SelfID) yAdj += 22/32f;
+			return new Vector3(x / 32f, yAdj, z / 32f);
+		}
 
-		public string ReadCp437String() {
-			int length = GetString(false, Utils.StringLength);
-			return new String(characters, 0, length);
-		}
-		
-		public string ReadAsciiString() {
-			int length = GetString(true, Utils.StringLength);
-			return new String(characters, 0, length);
-		}
-		
-		public string ReadAsciiString(int maxLength) {
-			int length = GetString(true, maxLength);
+		public string ReadString() {
+			int length = GetString(Utils.StringLength);
 			return new String(characters, 0, length);
 		}
 		
 		internal string ReadChatString(ref byte messageType) {
-			int length = GetString(false, Utils.StringLength);
+			int length = GetString(Utils.StringLength);
 			
 			int offset = 0;
 			if (length >= womDetail.Length && IsWomDetailString()) {
@@ -109,7 +115,7 @@ namespace ClassicalSharp.Network {
 			return true;
 		}
 		
-		int GetString(bool ascii, int maxLength) {
+		int GetString(int maxLength) {
 			int length = 0;
 			
 			for (int i = maxLength - 1; i >= 0; i--) {
@@ -117,19 +123,7 @@ namespace ClassicalSharp.Network {
 				if (length == 0 && !(code == 0 || code == 0x20))
 				   length = i + 1;
 				
-				if (ascii) {
-					characters[i] = code >= 0x7F ? '?' : (char)code;
-					continue;
-				}
-				
-				// Treat code as an index in code page 437
-				if (code < 0x20) {
-					characters[i] = Utils.ControlCharReplacements[code];
-				} else if (code < 0x7F) {
-					characters[i] = (char)code;
-				} else {
-					characters[i] = Utils.ExtendedCharReplacements[code - 0x7F];
-				}
+				characters[i] = Utils.CP437ToUnicode(code);
 			}
 			index += maxLength;
 			return length;

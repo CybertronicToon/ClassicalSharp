@@ -4,12 +4,22 @@ using ClassicalSharp.GraphicsAPI;
 using ClassicalSharp.Map;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp {
 
 	public unsafe sealed class AdvLightingMeshBuilder : ChunkMeshBuilder {
 		
-		int initBitFlags;
-		protected override int StretchXLiquid(int xx, int countIndex, int x, int y, int z, int chunkIndex, byte block) {
+		Vector3 minBB, maxBB;
+		bool isTranslucent;
+		int initBitFlags, lightFlags;
+		float x1, y1, z1, x2, y2, z2;
+		
+		protected override int StretchXLiquid(int countIndex, int x, int y, int z, int chunkIndex, BlockID block) {
 			if (OccludedLiquid(chunkIndex)) return 0;
 			initBitFlags = ComputeLightFlags(x, y, z, chunkIndex);
 			bitFlags[chunkIndex] = initBitFlags;
@@ -18,10 +28,9 @@ namespace ClassicalSharp {
 			x++;
 			chunkIndex++;
 			countIndex += Side.Sides;
-			int max = chunkSize - xx;
+			bool stretchTile = (BlockInfo.CanStretch[block] & (1 << Side.Top)) != 0;
 			
-			while (count < max && x < width && CanStretch(block, chunkIndex, x, y, z, Side.Top)
-			       && !OccludedLiquid(chunkIndex)) {
+			while (x < chunkEndX && stretchTile && CanStretch(block, chunkIndex, x, y, z, Side.Top) && !OccludedLiquid(chunkIndex)) {
 				counts[countIndex] = 0;
 				count++;
 				x++;
@@ -31,7 +40,7 @@ namespace ClassicalSharp {
 			return count;
 		}
 		
-		protected override int StretchX(int xx, int countIndex, int x, int y, int z, int chunkIndex, byte block, int face) {
+		protected override int StretchX(int countIndex, int x, int y, int z, int chunkIndex, BlockID block, int face) {
 			initBitFlags = ComputeLightFlags(x, y, z, chunkIndex);
 			bitFlags[chunkIndex] = initBitFlags;
 			
@@ -39,10 +48,9 @@ namespace ClassicalSharp {
 			x++;
 			chunkIndex++;
 			countIndex += Side.Sides;
-			int max = chunkSize - xx;
-			bool stretchTile = (info.CanStretch[block] & (1 << face)) != 0;
+			bool stretchTile = (BlockInfo.CanStretch[block] & (1 << face)) != 0;
 			
-			while (count < max && x < width && stretchTile && CanStretch(block, chunkIndex, x, y, z, face)) {
+			while (x < chunkEndX && stretchTile && CanStretch(block, chunkIndex, x, y, z, face)) {
 				counts[countIndex] = 0;
 				count++;
 				x++;
@@ -52,7 +60,7 @@ namespace ClassicalSharp {
 			return count;
 		}
 		
-		protected override int StretchZ(int zz, int countIndex, int x, int y, int z, int chunkIndex, byte block, int face) {
+		protected override int StretchZ(int countIndex, int x, int y, int z, int chunkIndex, BlockID block, int face) {
 			initBitFlags = ComputeLightFlags(x, y, z, chunkIndex);
 			bitFlags[chunkIndex] = initBitFlags;
 			
@@ -60,10 +68,9 @@ namespace ClassicalSharp {
 			z++;
 			chunkIndex += extChunkSize;
 			countIndex += chunkSize * Side.Sides;
-			int max = chunkSize - zz;
-			bool stretchTile = (info.CanStretch[block] & (1 << face)) != 0;
+			bool stretchTile = (BlockInfo.CanStretch[block] & (1 << face)) != 0;
 			
-			while (count < max && z < length && stretchTile && CanStretch(block, chunkIndex, x, y, z, face)) {
+			while (z < chunkEndZ && stretchTile && CanStretch(block, chunkIndex, x, y, z, face)) {
 				counts[countIndex] = 0;
 				count++;
 				z++;
@@ -73,19 +80,55 @@ namespace ClassicalSharp {
 			return count;
 		}
 		
-		bool CanStretch(byte initialTile, int chunkIndex, int x, int y, int z, int face) {
-			byte rawBlock = chunk[chunkIndex];
+		bool CanStretch(BlockID initialBlock, int chunkIndex, int x, int y, int z, int face) {
+			BlockID rawBlock = chunk[chunkIndex];
 			bitFlags[chunkIndex] = ComputeLightFlags(x, y, z, chunkIndex);
-			return rawBlock == initialTile
-				&& !info.IsFaceHidden(rawBlock, chunk[chunkIndex + offsets[face]], face)
+			return rawBlock == initialBlock
+				&& !BlockInfo.IsFaceHidden(rawBlock, chunk[chunkIndex + offsets[face]], face)
 				&& (initBitFlags == bitFlags[chunkIndex]
 				    // Check that this face is either fully bright or fully in shadow
 				    && (initBitFlags == 0 || (initBitFlags & masks[face]) == masks[face]));
 		}
 		
 		
-		protected override void DrawLeftFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Left];
+		protected override void RenderTile(int index) {
+			if (BlockInfo.Draw[curBlock] == DrawType.Sprite) {
+				fullBright = BlockInfo.FullBright[curBlock];
+				tinted = BlockInfo.Tinted[curBlock];
+				int count = counts[index + Side.Top];
+				if (count != 0) DrawSprite(count);
+				return;
+			}
+			
+			int leftCount = counts[index++], rightCount = counts[index++],
+			frontCount = counts[index++], backCount = counts[index++],
+			bottomCount = counts[index++], topCount = counts[index++];
+			if (leftCount == 0 && rightCount == 0 && frontCount == 0 &&
+			    backCount == 0 && bottomCount == 0 && topCount == 0) return;
+			
+			fullBright = BlockInfo.FullBright[curBlock];
+			isTranslucent = BlockInfo.Draw[curBlock] == DrawType.Translucent;
+			lightFlags = BlockInfo.LightOffset[curBlock];
+			tinted = BlockInfo.Tinted[curBlock];
+			
+			Vector3 min = BlockInfo.RenderMinBB[curBlock], max = BlockInfo.RenderMaxBB[curBlock];
+			x1 = X + min.X; y1 = Y + min.Y; z1 = Z + min.Z;
+			x2 = X + max.X; y2 = Y + max.Y; z2 = Z + max.Z;
+			
+			this.minBB = BlockInfo.MinBB[curBlock]; this.maxBB = BlockInfo.MaxBB[curBlock];
+			minBB.Y = 1 - minBB.Y; maxBB.Y = 1 - maxBB.Y;
+			
+			if (leftCount != 0) DrawLeftFace(leftCount);
+			if (rightCount != 0) DrawRightFace(rightCount);
+			if (frontCount != 0) DrawFrontFace(frontCount);
+			if (backCount != 0) DrawBackFace(backCount);
+			if (bottomCount != 0) DrawBottomFace(bottomCount);
+			if (topCount != 0) DrawTopFace(topCount);
+		}
+		
+		
+		void DrawLeftFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Left];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Left) & 1;
@@ -100,30 +143,34 @@ namespace ClassicalSharp {
 			int aY0_Z1 = ((F >> xM1_yM1_zP1) & 1) + ((F >> xM1_yCC_zP1) & 1) + ((F >> xM1_yM1_zCC) & 1) + ((F >> xM1_yCC_zCC) & 1);
 			int aY1_Z0 = ((F >> xM1_yP1_zM1) & 1) + ((F >> xM1_yCC_zM1) & 1) + ((F >> xM1_yP1_zCC) & 1) + ((F >> xM1_yCC_zCC) & 1);
 			int aY1_Z1 = ((F >> xM1_yP1_zP1) & 1) + ((F >> xM1_yCC_zP1) & 1) + ((F >> xM1_yP1_zCC) & 1) + ((F >> xM1_yCC_zCC) & 1);
-			int col0_0 = fullBright ? FastColour.WhitePacked : MakeXSide(aY0_Z0), col1_0 = fullBright ? FastColour.WhitePacked : MakeXSide(aY1_Z0);
-			int col1_1 = fullBright ? FastColour.WhitePacked : MakeXSide(aY1_Z1), col0_1 = fullBright ? FastColour.WhitePacked : MakeXSide(aY0_Z1);
+			
+			int col0_0 = fullBright ? FastColour.WhitePacked : lerpX[aY0_Z0], col1_0 = fullBright ? FastColour.WhitePacked : lerpX[aY1_Z0];
+			int col1_1 = fullBright ? FastColour.WhitePacked : lerpX[aY1_Z1], col0_1 = fullBright ? FastColour.WhitePacked : lerpX[aY0_Z1];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Left];
 			if (aY0_Z0 + aY1_Z1 > aY0_Z1 + aY1_Z0) {
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col1_0);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y1, z2 + (count - 1), u2, v2, col0_1);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y2, z2 + (count - 1), u2, v1, col1_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col1_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y1, z2 + (count - 1), u2, v2, col0_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x1, y2, z2 + (count - 1), u2, v1, col1_1);
 			} else {
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y2, z2 + (count - 1), u2, v1, col1_1);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col1_0);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
-				part.vertices[part.vIndex.left++] = new VertexP3fT2fC4b(x1, y1, z2 + (count - 1), u2, v2, col0_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y2, z2 + (count - 1), u2, v1, col1_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col1_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x1, y1, z2 + (count - 1), u2, v2, col0_1);
 			}
+			part.vIndex[Side.Left] += 4;
 		}
 
-		protected override void DrawRightFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Right];
+		void DrawRightFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Right];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Right) & 1;
@@ -138,30 +185,34 @@ namespace ClassicalSharp {
 			int aY0_Z1 = ((F >> xP1_yM1_zP1) & 1) + ((F >> xP1_yCC_zP1) & 1) + ((F >> xP1_yM1_zCC) & 1) + ((F >> xP1_yCC_zCC) & 1);
 			int aY1_Z0 = ((F >> xP1_yP1_zM1) & 1) + ((F >> xP1_yCC_zM1) & 1) + ((F >> xP1_yP1_zCC) & 1) + ((F >> xP1_yCC_zCC) & 1);
 			int aY1_Z1 = ((F >> xP1_yP1_zP1) & 1) + ((F >> xP1_yCC_zP1) & 1) + ((F >> xP1_yP1_zCC) & 1) + ((F >> xP1_yCC_zCC) & 1);
-			int col0_0 = fullBright ? FastColour.WhitePacked : MakeXSide(aY0_Z0), col1_0 = fullBright ? FastColour.WhitePacked : MakeXSide(aY1_Z0);
-			int col1_1 = fullBright ? FastColour.WhitePacked : MakeXSide(aY1_Z1), col0_1 = fullBright ? FastColour.WhitePacked : MakeXSide(aY0_Z1);
+			
+			int col0_0 = fullBright ? FastColour.WhitePacked : lerpX[aY0_Z0], col1_0 = fullBright ? FastColour.WhitePacked : lerpX[aY1_Z0];
+			int col1_1 = fullBright ? FastColour.WhitePacked : lerpX[aY1_Z1], col0_1 = fullBright ? FastColour.WhitePacked : lerpX[aY0_Z1];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Right];
 			if (aY0_Z0 + aY1_Z1 > aY0_Z1 + aY1_Z0) {
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y2, z1, u1, v1, col1_0);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y2, z2 + (count - 1), u2, v1, col1_1);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y1, z2 + (count - 1), u2, v2, col0_1);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y1, z1, u1, v2, col0_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2, y2, z1, u1, v1, col1_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x2, y2, z2 + (count - 1), u2, v1, col1_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2, y1, z2 + (count - 1), u2, v2, col0_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2, y1, z1, u1, v2, col0_0);
 			} else {
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y2, z2 + (count - 1), u2, v1, col1_1);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y1, z2 + (count - 1), u2, v2, col0_1);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y1, z1, u1, v2, col0_0);
-				part.vertices[part.vIndex.right++] = new VertexP3fT2fC4b(x2, y2, z1, u1, v1, col1_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2, y2, z2 + (count - 1), u2, v1, col1_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x2, y1, z2 + (count - 1), u2, v2, col0_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2, y1, z1, u1, v2, col0_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2, y2, z1, u1, v1, col1_0);
 			}
+			part.vIndex[Side.Right] += 4;
 		}
 
-		protected override void DrawFrontFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Front];
+		void DrawFrontFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Front];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Front) & 1;
@@ -176,30 +227,34 @@ namespace ClassicalSharp {
 			int aX0_Y1 = ((F >> xM1_yP1_zM1) & 1) + ((F >> xM1_yCC_zM1) & 1) + ((F >> xCC_yP1_zM1) & 1) + ((F >> xCC_yCC_zM1) & 1);
 			int aX1_Y0 = ((F >> xP1_yM1_zM1) & 1) + ((F >> xP1_yCC_zM1) & 1) + ((F >> xCC_yM1_zM1) & 1) + ((F >> xCC_yCC_zM1) & 1);
 			int aX1_Y1 = ((F >> xP1_yP1_zM1) & 1) + ((F >> xP1_yCC_zM1) & 1) + ((F >> xCC_yP1_zM1) & 1) + ((F >> xCC_yCC_zM1) & 1);
-			int col0_0 = fullBright ? FastColour.WhitePacked : MakeZSide(aX0_Y0), col1_0 = fullBright ? FastColour.WhitePacked : MakeZSide(aX1_Y0);
-			int col1_1 = fullBright ? FastColour.WhitePacked : MakeZSide(aX1_Y1), col0_1 = fullBright ? FastColour.WhitePacked : MakeZSide(aX0_Y1);
+			
+			int col0_0 = fullBright ? FastColour.WhitePacked : lerpZ[aX0_Y0], col1_0 = fullBright ? FastColour.WhitePacked : lerpZ[aX1_Y0];
+			int col1_1 = fullBright ? FastColour.WhitePacked : lerpZ[aX1_Y1], col0_1 = fullBright ? FastColour.WhitePacked : lerpZ[aX0_Y1];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Front];
 			if (aX1_Y1 + aX0_Y0 > aX0_Y1 + aX1_Y0) {
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v2, col1_0);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_1);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v2, col1_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_1);
 			} else {
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_1);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_1);
-				part.vertices[part.vIndex.front++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v2, col1_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y1, z1, u1, v2, col0_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v2, col1_0);
 			}
+			part.vIndex[Side.Front] += 4;
 		}
 		
-		protected override void DrawBackFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Back];
+		void DrawBackFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Back];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Back) & 1;
@@ -214,30 +269,34 @@ namespace ClassicalSharp {
 			int aX1_Y0 = ((F >> xP1_yM1_zP1) & 1) + ((F >> xP1_yCC_zP1) & 1) + ((F >> xCC_yM1_zP1) & 1) + ((F >> xCC_yCC_zP1) & 1);
 			int aX0_Y1 = ((F >> xM1_yP1_zP1) & 1) + ((F >> xM1_yCC_zP1) & 1) + ((F >> xCC_yP1_zP1) & 1) + ((F >> xCC_yCC_zP1) & 1);
 			int aX1_Y1 = ((F >> xP1_yP1_zP1) & 1) + ((F >> xP1_yCC_zP1) & 1) + ((F >> xCC_yP1_zP1) & 1) + ((F >> xCC_yCC_zP1) & 1);
-			int col1_1 = fullBright ? FastColour.WhitePacked : MakeZSide(aX1_Y1), col1_0 = fullBright ? FastColour.WhitePacked : MakeZSide(aX1_Y0);
-			int col0_0 = fullBright ? FastColour.WhitePacked : MakeZSide(aX0_Y0), col0_1 = fullBright ? FastColour.WhitePacked : MakeZSide(aX0_Y1);
+			
+			int col1_1 = fullBright ? FastColour.WhitePacked : lerpZ[aX1_Y1], col1_0 = fullBright ? FastColour.WhitePacked : lerpZ[aX1_Y0];
+			int col0_0 = fullBright ? FastColour.WhitePacked : lerpZ[aX0_Y0], col0_1 = fullBright ? FastColour.WhitePacked : lerpZ[aX0_Y1];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Back];
 			if (aX1_Y1 + aX0_Y0 > aX0_Y1 + aX1_Y0) {
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x1, y2, z2, u1, v1, col0_1);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_0);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_0);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v1, col1_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y2, z2, u1, v1, col0_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v1, col1_1);
 			} else {
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v1, col1_1);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x1, y2, z2, u1, v1, col0_1);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_0);
-				part.vertices[part.vIndex.back++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v1, col1_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y2, z2, u1, v1, col0_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_0);
 			}
+			part.vIndex[Side.Back] += 4;
 		}
 		
-		protected override void DrawBottomFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Bottom];
+		void DrawBottomFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Bottom];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Bottom) & 1;
@@ -252,30 +311,34 @@ namespace ClassicalSharp {
 			int aX1_Z0 = ((F >> xP1_yM1_zM1) & 1) + ((F >> xP1_yM1_zCC) & 1) + ((F >> xCC_yM1_zM1) & 1) + ((F >> xCC_yM1_zCC) & 1);
 			int aX0_Z1 = ((F >> xM1_yM1_zP1) & 1) + ((F >> xM1_yM1_zCC) & 1) + ((F >> xCC_yM1_zP1) & 1) + ((F >> xCC_yM1_zCC) & 1);
 			int aX1_Z1 = ((F >> xP1_yM1_zP1) & 1) + ((F >> xP1_yM1_zCC) & 1) + ((F >> xCC_yM1_zP1) & 1) + ((F >> xCC_yM1_zCC) & 1);
-			int col0_1 = fullBright ? FastColour.WhitePacked : MakeYSide(aX0_Z1), col1_1 = fullBright ? FastColour.WhitePacked : MakeYSide(aX1_Z1);
-			int col1_0 = fullBright ? FastColour.WhitePacked : MakeYSide(aX1_Z0), col0_0 = fullBright ? FastColour.WhitePacked : MakeYSide(aX0_Z0);
+			
+			int col0_1 = fullBright ? FastColour.WhitePacked : lerpY[aX0_Z1], col1_1 = fullBright ? FastColour.WhitePacked : lerpY[aX1_Z1];
+			int col1_0 = fullBright ? FastColour.WhitePacked : lerpY[aX1_Z0], col0_0 = fullBright ? FastColour.WhitePacked : lerpY[aX0_Z0];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Bottom];
 			if (aX0_Z1 + aX1_Z0 > aX0_Z0 + aX1_Z1) {
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_1);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_1);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v1, col0_0);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v1, col1_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y1, z1, u1, v1, col0_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v1, col1_0);
 			} else {
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_1);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x1, y1, z1, u1, v1, col0_0);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v1, col1_0);
-				part.vertices[part.vIndex.bottom++] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y1, z2, u1, v2, col0_1);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y1, z1, u1, v1, col0_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z1, u2, v1, col1_0);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y1, z2, u2, v2, col1_1);
 			}
+			part.vIndex[Side.Bottom] += 4;
 		}
 
-		protected override void DrawTopFace(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Top];
+		void DrawTopFace(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Top];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
 			int offset = (lightFlags >> Side.Top) & 1;
@@ -290,32 +353,42 @@ namespace ClassicalSharp {
 			int aX1_Z0 = ((F >> xP1_yP1_zM1) & 1) + ((F >> xP1_yP1_zCC) & 1) + ((F >> xCC_yP1_zM1) & 1) + ((F >> xCC_yP1_zCC) & 1);
 			int aX0_Z1 = ((F >> xM1_yP1_zP1) & 1) + ((F >> xM1_yP1_zCC) & 1) + ((F >> xCC_yP1_zP1) & 1) + ((F >> xCC_yP1_zCC) & 1);
 			int aX1_Z1 = ((F >> xP1_yP1_zP1) & 1) + ((F >> xP1_yP1_zCC) & 1) + ((F >> xCC_yP1_zP1) & 1) + ((F >> xCC_yP1_zCC) & 1);
-			int col0_0 = fullBright ? FastColour.WhitePacked : Make(aX0_Z0), col1_0 = fullBright ? FastColour.WhitePacked : Make(aX1_Z0);
-			int col1_1 = fullBright ? FastColour.WhitePacked : Make(aX1_Z1), col0_1 = fullBright ? FastColour.WhitePacked : Make(aX0_Z1);
+			
+			int col0_0 = fullBright ? FastColour.WhitePacked : lerp[aX0_Z0], col1_0 = fullBright ? FastColour.WhitePacked : lerp[aX1_Z0];
+			int col1_1 = fullBright ? FastColour.WhitePacked : lerp[aX1_Z1], col0_1 = fullBright ? FastColour.WhitePacked : lerp[aX0_Z1];
 			if (tinted) {
-				col0_0 = TintBlock(curBlock, col0_0);
-				col1_0 = TintBlock(curBlock, col1_0);
-				col1_1 = TintBlock(curBlock, col1_1);
-				col0_1 = TintBlock(curBlock, col0_1);
+				FastColour tint = BlockInfo.FogColour[curBlock];
+				col0_0 = Utils.Tint(col0_0, tint);
+				col1_0 = Utils.Tint(col1_0, tint);
+				col1_1 = Utils.Tint(col1_1, tint);
+				col0_1 = Utils.Tint(col0_1, tint);
 			}
 			
+			int index = part.vIndex[Side.Top];
 			if (aX0_Z0 + aX1_Z1 > aX0_Z1 + aX1_Z0) {
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_0);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_0);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x1, y2, z2, u1, v2, col0_1);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v2, col1_1);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_0);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x1, y2, z2, u1, v2, col0_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v2, col1_1);
 			} else {
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_0);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x1, y2, z2, u1, v2, col0_1);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v2, col1_1);
-				part.vertices[part.vIndex.top++] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_0);
+				part.vertices[index    ] = new VertexP3fT2fC4b(x1, y2, z1, u1, v1, col0_0);
+				part.vertices[index + 1] = new VertexP3fT2fC4b(x1, y2, z2, u1, v2, col0_1);
+				part.vertices[index + 2] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z2, u2, v2, col1_1);
+				part.vertices[index + 3] = new VertexP3fT2fC4b(x2 + (count - 1), y2, z1, u2, v1, col1_0);
 			}
+			part.vIndex[Side.Top] += 4;
 		}
 		
-		int Make(int count) { return Lerp(env.Shadow, env.Sun, count / 4f); }
-		int MakeZSide(int count) { return Lerp(env.ShadowZSide, env.SunZSide, count / 4f); }
-		int MakeXSide(int count) { return Lerp(env.ShadowXSide, env.SunXSide, count / 4f); }
-		int MakeYSide(int count) { return Lerp(env.ShadowYBottom, env.SunYBottom, count / 4f); }
+		int[] lerp = new int[5], lerpX = new int[5], lerpZ = new int[5], lerpY = new int[5];		
+		protected override void PreStretchTiles(int x1, int y1, int z1) {
+			base.PreStretchTiles(x1, y1, z1);
+			for (int i = 0; i <= 4; i++) {
+				lerp[i]  = Lerp(env.Shadow, env.Sun, i / 4f);
+				lerpX[i] = Lerp(env.ShadowXSide, env.SunXSide, i / 4f);
+				lerpZ[i] = Lerp(env.ShadowZSide, env.SunZSide, i / 4f);
+				lerpY[i] = Lerp(env.ShadowYBottom, env.SunYBottom, i / 4f);
+			}
+		}
 		
 		static int Lerp(int a, int b, float t) {
 			int c = FastColour.BlackPacked;
@@ -324,6 +397,7 @@ namespace ClassicalSharp {
 			c |= (byte)Utils.Lerp(a & 0x0000FF, b & 0x0000FF, t);
 			return c;
 		}
+		
 		
 		#region Light computation
 		
@@ -355,25 +429,33 @@ namespace ClassicalSharp {
 		const int xP1_yM1_zP1 = 24, xP1_yCC_zP1 = 25, xP1_yP1_zP1 = 26;
 		
 		int Lit(int x, int y, int z, int cIndex) {
-			if (x < 0 || y < 0 || z < 0
-			    || x >= width || y >= height || z >= length) return 7;
+			if (y < 0 || y >= height) return 7; // all faces lit
+			
+			// TODO: check sides height (if sides > edges), check if edge block casts a shadow
+			if (x < 0 || z < 0 || x >= width || z >= length) {
+				return y >= edgeLevel ? 7 : y == (edgeLevel - 1) ? 6 : 0;
+			}
+			
 			int flags = 0;
-			byte block = chunk[cIndex];
-			int lightHeight = lighting.heightmap[(z * width) + x];
+			BlockID block = chunk[cIndex];
+			int lightHeight = light.heightmap[(z * width) + x];
+			lightFlags = BlockInfo.LightOffset[block];
 
 			// Use fact Light(Y.Bottom) == Light((Y - 1).Top)
 			int offset = (lightFlags >> Side.Bottom) & 1;
 			flags |= ((y - offset) > lightHeight ? 1 : 0);
+			
 			// Light is same for all the horizontal faces
 			flags |= (y > lightHeight ? 2 : 0);
+			
 			// Use fact Light((Y + 1).Bottom) == Light(Y.Top)
 			offset = (lightFlags >> Side.Top) & 1;
 			flags |= ((y - offset) >= lightHeight ? 4 : 0);
 			
 			// Dynamic lighting
-			if (info.FullBright[block])               flags |= 5;
-			if (info.FullBright[chunk[cIndex + 324]]) flags |= 4;
-			if (info.FullBright[chunk[cIndex - 324]]) flags |= 1;
+			if (BlockInfo.FullBright[block])               flags |= 5;
+			if (BlockInfo.FullBright[chunk[cIndex + 324]]) flags |= 4;
+			if (BlockInfo.FullBright[chunk[cIndex - 324]]) flags |= 1;
 			return flags;
 		}
 		

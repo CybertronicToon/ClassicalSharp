@@ -132,8 +132,7 @@ namespace Launcher {
 		
 		static bool ParseEscaped(string json, ref int index, StringBuilder s) {
 			char c = json[index++];
-			if (c == '\\') { s.Append('\\'); return true; }
-			if (c == '"') { s.Append('"'); return true; }
+			if (c == '/' || c == '\\' || c == '"') { s.Append(c); return true; }
 			if (c != 'u') { s.Append('?'); return true; }
 			
 			int remaining = json.Length - index;
@@ -145,7 +144,8 @@ namespace Launcher {
 			if (!UInt32.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out codePoint))
 				return false;
 			
-			s.Append((char)codePoint);
+			// don't want control characters in names/software
+			if (codePoint >= 32) s.Append((char)codePoint);
 			index += 4; // skip 4 chars
 			return true;
 		}

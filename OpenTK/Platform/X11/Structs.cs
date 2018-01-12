@@ -27,9 +27,6 @@
 // NOT COMPLETE
 
 using System;
-using System.ComponentModel;
-using System.Collections;
-using System.Drawing;
 using System.Runtime.InteropServices;
 
 // X11 Version
@@ -616,37 +613,6 @@ namespace OpenTK.Platform.X11
 		//[ FieldOffset(0) ] public int[] pad;
 		[FieldOffset(0)]
 		public XEventPad Pad;
-		public override string ToString()
-		{
-			switch (type)
-			{
-				case XEventName.PropertyNotify:
-					return ToString(PropertyEvent);
-				case XEventName.ResizeRequest:
-					return ToString(ResizeRequestEvent);
-				case XEventName.ConfigureNotify:
-					return ToString(ConfigureEvent);
-				default:
-					return type.ToString();
-			}
-		}
-
-		public static string ToString(object ev)
-		{
-			string result = string.Empty;
-			Type type = ev.GetType();
-			System.Reflection.FieldInfo[] fields = type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
-			for (int i = 0; i < fields.Length; i++)
-			{
-				if (result != string.Empty)
-				{
-					result += ", ";
-				}
-				object value = fields[i].GetValue(ev);
-				result += fields[i].Name + "=" + (value == null ? "<null>" : value.ToString());
-			}
-			return type.Name + " (" + result + ")";
-		}
 	}
 
 	[StructLayout(LayoutKind.Sequential)]
@@ -695,11 +661,6 @@ namespace OpenTK.Platform.X11
 		public IntPtr do_not_propagate_mask;
 		public bool override_direct;
 		public IntPtr screen;
-
-		public override string ToString()
-		{
-			return XEvent.ToString(this);
-		}
 	}
 
 	public enum XEventName
@@ -819,12 +780,6 @@ namespace OpenTK.Platform.X11
 	}
 
 	#pragma warning restore 1591
-
-	public enum GrabMode
-	{
-		GrabModeSync = 0,
-		GrabModeAsync = 1
-	}
 
 	[StructLayout(LayoutKind.Sequential, Pack = 2)]
 	public struct XColor
@@ -1047,34 +1002,6 @@ namespace OpenTK.Platform.X11
 		}
 	}
 
-	[Flags]
-	public enum GCFunction
-	{
-		GCFunction = 1 << 0,
-		GCPlaneMask = 1 << 1,
-		GCForeground = 1 << 2,
-		GCBackground = 1 << 3,
-		GCLineWidth = 1 << 4,
-		GCLineStyle = 1 << 5,
-		GCCapStyle = 1 << 6,
-		GCJoinStyle = 1 << 7,
-		GCFillStyle = 1 << 8,
-		GCFillRule = 1 << 9,
-		GCTile = 1 << 10,
-		GCStipple = 1 << 11,
-		GCTileStipXOrigin = 1 << 12,
-		GCTileStipYOrigin = 1 << 13,
-		GCFont = 1 << 14,
-		GCSubwindowMode = 1 << 15,
-		GCGraphicsExposures = 1 << 16,
-		GCClipXOrigin = 1 << 17,
-		GCClipYOrigin = 1 << 18,
-		GCClipMask = 1 << 19,
-		GCDashOffset = 1 << 20,
-		GCDashList = 1 << 21,
-		GCArcMode = 1 << 22
-	}
-
 	public enum GCJoinStyle
 	{
 		JoinMiter = 0,
@@ -1169,20 +1096,6 @@ namespace OpenTK.Platform.X11
 		GXorInverted = 0xd,        /* NOT src OR dst */
 		GXnand = 0xe,        /* NOT src OR NOT dst */
 		GXset = 0xf        /* 1 */
-	}
-
-	public enum NetWindowManagerState
-	{
-		Remove = 0,
-		Add = 1,
-		Toggle = 2
-	}
-
-	public enum RevertTo
-	{
-		None = 0,
-		PointerRoot = 1,
-		Parent = 2
 	}
 
 	public enum MapState
@@ -1372,8 +1285,6 @@ namespace OpenTK.Platform.X11
 		public int width_inc;
 		public int height_inc;
 	}
-
-	public delegate int XErrorHandler(IntPtr DisplayHandle, ref XErrorEvent error_event);
 
 	public enum XRequest : byte
 	{

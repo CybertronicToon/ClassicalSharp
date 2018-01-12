@@ -36,10 +36,10 @@ namespace OpenTK.Platform.Windows {
 		public WinGLContext(GraphicsMode format, WinWindowInfo window) {
 			if (window == null)
 				throw new ArgumentNullException("window", "Must point to a valid window.");
-			if (window.WindowHandle == IntPtr.Zero)
+			if (window.handle == IntPtr.Zero)
 				throw new ArgumentException("window", "Must be a valid window.");
 
-			Debug.Print( "OpenGL will be bound to handle: {0}", window.WindowHandle );
+			Debug.Print( "OpenGL will be bound to handle: {0}", window.handle );
 			SelectGraphicsModePFD(format, (WinWindowInfo)window);
 			Debug.Print( "Setting pixel format... " );
 			SetGraphicsModePFD(format, (WinWindowInfo)window);
@@ -48,9 +48,7 @@ namespace OpenTK.Platform.Windows {
 			if (ContextHandle == IntPtr.Zero)
 				ContextHandle = Wgl.wglCreateContext(window.DeviceContext);
 			if (ContextHandle == IntPtr.Zero)
-				throw new GraphicsContextException(
-					String.Format("Context creation failed. Wgl.CreateContext() error: {0}.",
-					              Marshal.GetLastWin32Error()));
+				throw new GraphicsContextException("Context creation failed. Wgl.CreateContext() error: " + Marshal.GetLastWin32Error());
 			
 			Debug.Print( "success! (id: {0})", ContextHandle );
 		}
@@ -66,7 +64,7 @@ namespace OpenTK.Platform.Windows {
 			bool success;
 
 			if (window != null) {
-				if (((WinWindowInfo)window).WindowHandle == IntPtr.Zero)
+				if (((WinWindowInfo)window).handle == IntPtr.Zero)
 					throw new ArgumentException("window", "Must point to a valid window.");
 
 				success = Wgl.wglMakeCurrent(((WinWindowInfo)window).DeviceContext, ContextHandle);
@@ -118,11 +116,11 @@ namespace OpenTK.Platform.Windows {
 			API.DescribePixelFormat(deviceContext, modeIndex, pfd.Size, ref pfd);
 			
 			Mode = new GraphicsMode(
-				(IntPtr)modeIndex, new ColorFormat(pfd.RedBits, pfd.GreenBits, pfd.BlueBits, pfd.AlphaBits),
+				new ColorFormat(pfd.RedBits, pfd.GreenBits, pfd.BlueBits, pfd.AlphaBits),
 				pfd.DepthBits, pfd.StencilBits,
 				(pfd.Flags & PixelFormatDescriptorFlags.DOUBLEBUFFER) != 0 ? 2 : 1);
 			
-			Debug.Print(modeIndex);
+			Debug.Print("WGL mode index: " + modeIndex.ToString());
 			if (!API.SetPixelFormat(window.DeviceContext, modeIndex, ref pfd))
 				throw new GraphicsContextException(String.Format(
 					"Requested GraphicsMode not available. SetPixelFormat error: {0}", Marshal.GetLastWin32Error()));

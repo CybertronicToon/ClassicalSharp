@@ -15,12 +15,12 @@ namespace ClassicalSharp.Entities {
 			this.entity = entity;
 		}
 		
-		public float legXRot, armXRot, armZRot;
-		public float bobbingHor, bobbingVer, bobbingModel, tiltX, tiltY;
-		public float walkTime, swing, bobStrength = 1, velTiltStrength = 1;
+		public float bobbingHor, bobbingVer, bobbingModel;
+		public float walkTime, swing, bobStrength = 1;
+		internal float walkTimeO, walkTimeN, swingO, swingN, bobStrengthO = 1, bobStrengthN = 1;
 		
-		internal float walkTimeO, walkTimeN, swingO, swingN;
-		internal float leftXRot, leftZRot, rightXRot, rightZRot;
+		public float leftLegX, leftLegZ, rightLegX, rightLegZ;
+		public float leftArmX, leftArmZ, rightArmX, rightArmZ;
 		
 		/// <summary> Calculates the next animation state based on old and new position. </summary>
 		public void UpdateAnimState(Vector3 oldPos, Vector3 newPos, double delta) {
@@ -38,6 +38,12 @@ namespace ClassicalSharp.Entities {
 				swingN -= (float)delta * 3;
 			}
 			Utils.Clamp(ref swingN, 0, 1);
+			
+			// TODO: the Tilt code was designed for 60 ticks/second, fix it up for 20 ticks/second
+			bobStrengthO = bobStrengthN;
+			for (int i = 0; i < 3; i++) {
+				DoTilt(ref bobStrengthN, !game.ViewBobbing || !entity.onGround);
+			}
 		}
 		
 		const float armMax = 60 * Utils.Deg2Rad;
@@ -50,46 +56,38 @@ namespace ClassicalSharp.Entities {
 		public void GetCurrentAnimState(float t) {
 			swing = Utils.Lerp(swingO, swingN, t);
 			walkTime = Utils.Lerp(walkTimeO, walkTimeN, t);
+			bobStrength = Utils.Lerp(bobStrengthO, bobStrengthN, t);
+			
 			float idleTime = (float)game.accumulator;
 			float idleXRot = (float)(Math.Sin(idleTime * idleXPeriod) * idleMax);
 			float idleZRot = (float)(idleMax + Math.Cos(idleTime * idleZPeriod) * idleMax);
 			
-			armXRot = (float)(Math.Cos(walkTime) * swing * armMax) - idleXRot;
-			legXRot = -(float)(Math.Cos(walkTime) * swing * legMax);
-			armZRot = -idleZRot;
+			leftArmX = (float)(Math.Cos(walkTime) * swing * armMax) - idleXRot;
+			leftArmZ = -idleZRot;
+			leftLegX = -(float)(Math.Cos(walkTime) * swing * legMax);
+			leftLegZ = 0;
+			
+			rightLegX = -leftLegX; rightLegZ = -leftLegZ;
+			rightArmX = -leftArmX; rightArmZ = -leftArmZ;
 			
 			bobbingHor = (float)(Math.Cos(walkTime) * swing * (2.5f/16f));
 			bobbingVer = (float)(Math.Abs(Math.Sin(walkTime)) * swing * (2.5f/16f));
 			bobbingModel = (float)(Math.Abs(Math.Cos(walkTime)) * swing * (4.0f/16f));
 			
-			DoTilt(ref bobStrength, !game.ViewBobbing || !entity.onGround);
-			if (entity is LocalPlayer) {
-				LocalPlayer p = (LocalPlayer)entity;
-				DoTilt(ref velTiltStrength, p.Hacks.Noclip || p.Hacks.Flying);
-				
-				tiltX = (float)Math.Cos(walkTime) * swing * (0.15f * Utils.Deg2Rad);
-				tiltY = (float)Math.Sin(walkTime) * swing * (0.15f * Utils.Deg2Rad);
-			}
-
-			if (entity.Model is HumanoidModel)
+			if (entity.Model.CalcHumanAnims && !game.SimpleArmsAnim)
 				CalcHumanAnim(idleXRot, idleZRot);
 		}
 		
-		static void DoTilt(ref float tilt, bool reduce) {
-			if (reduce) tilt *= 0.93f;
+		internal static void DoTilt(ref float tilt, bool reduce) {
+			if (reduce) tilt *= 0.84f;
 			else tilt += 0.1f;
 			Utils.Clamp(ref tilt, 0, 1);
 		}
 		
 		void CalcHumanAnim(float idleXRot, float idleZRot) {
-			if (game.SimpleArmsAnim) {
-				leftXRot = armXRot; leftZRot = armZRot;
-				rightXRot = -armXRot; rightZRot = -armZRot;
-			} else {
-				PerpendicularAnim(0.23f, idleXRot, idleZRot, out leftXRot, out leftZRot);
-				PerpendicularAnim(0.28f, idleXRot, idleZRot, out rightXRot, out rightZRot);
-				rightXRot = -rightXRot; rightZRot = -rightZRot;
-			}
+			PerpendicularAnim(0.23f, idleXRot, idleZRot, out leftArmX, out leftArmZ);
+			PerpendicularAnim(0.28f, idleXRot, idleZRot, out rightArmX, out rightArmZ);
+			rightArmX = -rightArmX; rightArmZ = -rightArmZ;
 		}
 		
 		const float maxAngle = 110 * Utils.Deg2Rad;
@@ -99,6 +97,37 @@ namespace ClassicalSharp.Entities {
 			zRot = -idleZRot - verAngle * swing * maxAngle;
 			float horAngle = (float)(Math.Cos(walkTime) * swing * armMax * 1.5f);
 			xRot = idleXRot + horAngle;
+		}
+	}
+	
+	
+	/// <summary> Entity component that performs tilt animation depending on movement speed and time. </summary>
+	public sealed class TiltComponent {
+		
+		Game game;
+		public TiltComponent(Game game) { this.game = game; }
+		
+		public float tiltX, tiltY, velTiltStrength = 1;
+		internal float velTiltStrengthO = 1, velTiltStrengthN = 1;
+		
+		/// <summary> Calculates the next animation state based on old and new position. </summary>
+		public void UpdateAnimState(double delta) {		
+			velTiltStrengthO = velTiltStrengthN;
+			LocalPlayer p = game.LocalPlayer;
+			
+			// TODO: the Tilt code was designed for 60 ticks/second, fix it up for 20 ticks/second
+			for (int i = 0; i < 3; i++) {
+				AnimatedComponent.DoTilt(ref velTiltStrengthN, p.Hacks.Noclip || p.Hacks.Flying);
+			}
+		}
+		
+		/// <summary> Calculates the interpolated state between the last and next animation state. </summary>
+		public void GetCurrentAnimState(float t) {
+			LocalPlayer p = game.LocalPlayer;
+			velTiltStrength = Utils.Lerp(velTiltStrengthO, velTiltStrengthN, t);
+			
+			tiltX = (float)Math.Cos(p.anim.walkTime) * p.anim.swing * (0.15f * Utils.Deg2Rad);
+			tiltY = (float)Math.Sin(p.anim.walkTime) * p.anim.swing * (0.15f * Utils.Deg2Rad);
 		}
 	}
 }

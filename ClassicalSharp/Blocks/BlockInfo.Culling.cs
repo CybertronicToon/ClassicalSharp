@@ -2,46 +2,42 @@
 using System;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp {
 	
 	/// <summary> Stores various properties about the blocks in Minecraft Classic. </summary>
-	public partial class BlockInfo {
+	public static partial class BlockInfo {
 		
-		public byte[] hidden = new byte[Block.Count * Block.Count];
+		public static byte[] hidden = new byte[Block.Count * Block.Count];
 		
-		public byte[] CanStretch = new byte[Block.Count];
+		public static byte[] CanStretch = new byte[Block.Count];
 
-		internal void UpdateCulling() {
-			for (int block = 1; block < Block.Count; block++)
-				CheckOpaque(block);
+		internal static void UpdateCulling() {
 			for (int block = 0; block < Block.Count; block++)
 				CanStretch[block] = 0x3F;
 			
-			for (int block = 1; block < Block.Count; block++) {
-				for (int neighbour = 1; neighbour < Block.Count; neighbour++) {
-					CalcCulling((byte)block, (byte)neighbour);
+			for (int block = 0; block < Block.Count; block++) {
+				for (int neighbour = 0; neighbour < Block.Count; neighbour++) {
+					CalcCulling((BlockID)block, (BlockID)neighbour);
 				}
 			}
 		}
 		
-		internal void UpdateCulling(byte block) {
-			CheckOpaque(block);
+		internal static void UpdateCulling(BlockID block) {
 			CanStretch[block] = 0x3F;
 			
-			for (int other = 1; other < Block.Count; other++) {
-				CalcCulling(block, (byte)other);
-				CalcCulling((byte)other, block);
+			for (int other = 0; other < Block.Count; other++) {
+				CalcCulling(block, (BlockID)other);
+				CalcCulling((BlockID)other, block);
 			}
 		}
 		
-		void CheckOpaque(int block) {
-			if (MinBB[block] != Vector3.Zero || MaxBB[block] != Vector3.One) {
-				if (Draw[block] == DrawType.Opaque) 
-					Draw[block] = DrawType.Transparent;
-			}
-		}
-		
-		void CalcCulling(byte block, byte other) {
+		static void CalcCulling(BlockID block, BlockID other) {
 			Vector3 bMin = MinBB[block], bMax = MaxBB[block];
 			Vector3 oMin = MinBB[other], oMax = MaxBB[other];
 			if (IsLiquid(block)) bMax.Y -= 1.5f/16;
@@ -70,7 +66,7 @@ namespace ClassicalSharp {
 			}
 		}
 		
-		bool IsHidden(byte block, byte other, int side) {
+		static bool IsHidden(BlockID block, BlockID other) {
 			// Sprite blocks can never hide faces.
 			if (Draw[block] == DrawType.Sprite) return false;
 			
@@ -87,14 +83,14 @@ namespace ClassicalSharp {
 			if (Draw[block] != DrawType.Translucent || Draw[other] != DrawType.Translucent) return false;
 			
 			// e.g. for water / ice, don't need to draw water.
-			CollideType bType = Collide[block], oType = Collide[other];
+			byte bType = Collide[block], oType = Collide[other];
 			bool canSkip = (bType == CollideType.Solid && oType == CollideType.Solid) 
 				|| bType != CollideType.Solid;
-			return canSkip && FaceOccluded(block, other, side);
+			return canSkip;
 		}
 		
-		void SetHidden(byte block, byte other, int side, bool value) {
-			value = IsHidden(block, other, side) && value;
+		static void SetHidden(BlockID block, BlockID other, int side, bool value) {
+			value = IsHidden(block, other) && FaceOccluded(block, other, side) && value;
 			int bit = value ? 1 : 0;
 			hidden[block * Block.Count + other] &= (byte)~(1 << side);
 			hidden[block * Block.Count + other] |= (byte)(bit << side);
@@ -102,17 +98,21 @@ namespace ClassicalSharp {
 		
 		/// <summary> Returns whether the face at the given face of the block
 		/// should be drawn with the neighbour 'other' present on the other side of the face. </summary>
-		public bool IsFaceHidden(byte block, byte other, int tileSide) {
+		public static bool IsFaceHidden(BlockID block, BlockID other, int tileSide) {
+			#if USE16_BIT
+			return (hidden[(block << 12) | other] & (1 << tileSide)) != 0;
+			#else
 			return (hidden[(block << 8) | other] & (1 << tileSide)) != 0;
+			#endif
 		}
 		
-		void SetXStretch(byte block, bool stretch) {
+		static void SetXStretch(BlockID block, bool stretch) {
 			const byte mask = 0x3C;
 			CanStretch[block] &= 0xC3; // ~0x3C
 			CanStretch[block] |= (stretch ? mask : (byte)0);
 		}
 		
-		void SetZStretch(byte block, bool stretch) {
+		static void SetZStretch(BlockID block, bool stretch) {
 			const byte mask = 0x03;
 			CanStretch[block] &= 0xFC; // ~0x03
 			CanStretch[block] |= (stretch ? mask : (byte)0);

@@ -9,7 +9,7 @@ using Android.Graphics;
 namespace ClassicalSharp.Gui.Widgets {
 	public sealed class MenuInputWidget : InputWidget {
 		
-		public MenuInputWidget(Game game, Font font) : base(game, font) { }
+		public MenuInputWidget(Game game, Font font) : base(game, font, null, 1) { }
 		
 		public static MenuInputWidget Create(Game game, int width, int height, string text,
 		                                     Font font, MenuInputValidator validator) {
@@ -17,6 +17,7 @@ namespace ClassicalSharp.Gui.Widgets {
 			input.MinWidth = width;
 			input.MinHeight = height;
 			input.Validator = validator;
+			input.Padding = 3;
 			
 			input.Init();
 			input.Append(text);
@@ -27,10 +28,7 @@ namespace ClassicalSharp.Gui.Widgets {
 		public int MinWidth, MinHeight;
 		public MenuInputValidator Validator;
 		
-		public override int MaxLines { get { return 1; } }
-		public override string Prefix { get { return null; } }
-		public override int Padding { get { return 3; } }
-		public override int MaxCharsPerLine { get { return Utils.StringLength; } }
+		public override int UsedLines { get { return 1; } }
 		
 		public override void Render(double delta) {
 			gfx.Texturing = false;
@@ -43,13 +41,13 @@ namespace ClassicalSharp.Gui.Widgets {
 		
 		public override void RemakeTexture() {
 			DrawTextArgs args = new DrawTextArgs(lines[0], font, false);
-			Size size = game.Drawer2D.MeasureChatSize(ref args);
+			Size size = game.Drawer2D.MeasureSize(ref args);
 			caretAccumulator = 0;
 			
 			// Ensure we don't have 0 text height
 			if (size.Height == 0) {
 				args.Text = Validator.Range;
-				size.Height = game.Drawer2D.MeasureChatSize(ref args).Height;
+				size.Height = game.Drawer2D.MeasureSize(ref args).Height;
 				args.Text = lines[0];
 			} else {
 				args.SkipPartsCheck = true;
@@ -63,35 +61,29 @@ namespace ClassicalSharp.Gui.Widgets {
 				using (IDrawer2D drawer = game.Drawer2D)
 			{
 				drawer.SetBitmap(bmp);
-				drawer.DrawChatText(ref args, Padding, 0);
+				drawer.DrawText(ref args, Padding, 0);
 				
 				args.Text = Validator.Range;
 				args.SkipPartsCheck = false;
-				Size hintSize = drawer.MeasureChatSize(ref args);
+				Size hintSize = drawer.MeasureSize(ref args);
 				
 				args.SkipPartsCheck = true;
 				int hintX = adjSize.Width - hintSize.Width;
 				if (size.Width + 3 < hintX)
-					drawer.DrawChatText(ref args, hintX, 0);
+					drawer.DrawText(ref args, hintX, 0);
 				inputTex = drawer.Make2DTexture(bmp, adjSize, 0, 0);
 			}
 
-			CalculatePosition();			
+			Reposition();			
 			inputTex.X1 = X; inputTex.Y1 = Y;
 			if (size.Height < MinHeight)
 				inputTex.Y1 += MinHeight / 2 - size.Height / 2;
 		}
 		
-		static bool IsInvalidChar(char c) {
-			// Make sure we're in the printable text range from 0x20 to 0x7E
-			return c < ' ' || c == '&' || c > '~';
-			// TODO: Uncomment this for full unicode support for save level screen
-		}
-		
 		protected override bool AllowedChar(char c) {
-			if (IsInvalidChar(c)) return false;
+			if (c == '&' || !Utils.IsValidInputChar(c, true)) return false;
 			if (!Validator.IsValidChar(c)) return false;
-			if (Text.Length == MaxCharsPerLine) return false;
+			if (Text.Length == UsedLines * MaxCharsPerLine) return false;
 			
 			// See if the new string is in valid format
 			AppendChar(c);

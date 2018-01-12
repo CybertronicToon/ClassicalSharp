@@ -55,10 +55,10 @@ namespace Launcher.Gui.Screens {
 		bool signingIn;
 		void LoginAsync(int mouseX, int mouseY) {
 			if (String.IsNullOrEmpty(Get(0))) {
-				SetStatus("&ePlease enter a username"); return;
+				SetStatus("&eUsername required"); return;
 			}
 			if (String.IsNullOrEmpty(Get(1))) {
-				SetStatus("&ePlease enter a password"); return;
+				SetStatus("&ePassword required"); return;
 			}
 			if (signingIn) return;
 			UpdateSignInInfo(Get(0), Get(1));
@@ -79,7 +79,7 @@ namespace Launcher.Gui.Screens {
 		}
 
 		void DisplayWebException(WebException ex, string action) {
-			ErrorHandler2.LogError(action, ex);
+			ErrorHandler.LogError(action, ex);
 			bool sslCertError = ex.Status == WebExceptionStatus.TrustFailure ||
 				(ex.Status == WebExceptionStatus.SendFailure && OpenTK.Configuration.RunningOnMono);
 			if (ex.Status == WebExceptionStatus.Timeout) {
@@ -132,22 +132,17 @@ namespace Launcher.Gui.Screens {
 			game.Dirty = true;
 		}
 		
+		static string cachedUser, cachedPass;
 		void StoreFields() {
-			Dictionary<string, object> metadata;
-			if (!game.ScreenMetadata.TryGetValue("screen-CC", out metadata)) {
-				metadata = new Dictionary<string, object>();
-				game.ScreenMetadata["screen-CC"] = metadata;
-			}
-			metadata["user"] = Get(0);
-			metadata["pass"] = Get(1);
+			cachedUser = Get(0);
+			cachedPass = Get(1);
 		}
 		
 		void LoadSavedInfo() {
-			Dictionary<string, object> metadata;
 			// restore what user last typed into the various fields
-			if (game.ScreenMetadata.TryGetValue("screen-CC", out metadata)) {
-				Set(0, (string)metadata["user"]);
-				Set(1, (string)metadata["pass"]);
+			if (cachedUser != null) {
+				Set(0, cachedUser);
+				Set(1, cachedPass);
 			} else {
 				LoadFromOptions();
 			}

@@ -1,6 +1,12 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Map {
 	
 	/// <summary> Manages lighting through a simple heightmap, where each block is either in sun or shadow. </summary>
@@ -8,12 +14,12 @@ namespace ClassicalSharp.Map {
 		
 		int CalcHeightAt(int x, int maxY, int z, int index) {
 			int mapIndex = (maxY * length + z) * width + x;
-			byte[] blocks = game.World.blocks;
+			BlockID[] blocks = game.World.blocks;
 			
 			for (int y = maxY; y >= 0; y--) {
-				byte block = blocks[mapIndex];
-				if (info.BlocksLight[block]) {
-					int offset = (info.LightOffset[block] >> Side.Top) & 1;
+				BlockID block = blocks[mapIndex];
+				if (BlockInfo.BlocksLight[block]) {
+					int offset = (BlockInfo.LightOffset[block] >> Side.Top) & 1;
 					heightmap[index] = (short)(y - offset);
 					return y - offset;
 				}
@@ -44,7 +50,7 @@ namespace ClassicalSharp.Map {
 			return elemsLeft;
 		}
 		
-		unsafe bool CalculateHeightmapCoverage(int x1, int z1, int xCount, int zCount, int elemsLeft, int* skip, byte* mapPtr) {
+		unsafe bool CalculateHeightmapCoverage(int x1, int z1, int xCount, int zCount, int elemsLeft, int* skip, BlockID* mapPtr) {
 			int prevRunCount = 0;
 			for (int y = height - 1; y >= 0; y--) {
 				if (elemsLeft <= 0) return true;
@@ -58,8 +64,8 @@ namespace ClassicalSharp.Map {
 						int curRunCount = skip[index];
 						x += curRunCount; mapIndex += curRunCount; index += curRunCount;
 						
-						if (x < xCount && info.BlocksLight[mapPtr[mapIndex]]) {
-							int lightOffset = (info.LightOffset[mapPtr[mapIndex]] >> Side.Top) & 1;
+						if (x < xCount && BlockInfo.BlocksLight[mapPtr[mapIndex]]) {
+							int lightOffset = (BlockInfo.LightOffset[mapPtr[mapIndex]] >> Side.Top) & 1;
 							heightmap[heightmapIndex + x] = (short)(y - lightOffset);
 							elemsLeft--;
 							skip[index] = 0;

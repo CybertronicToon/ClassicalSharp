@@ -9,6 +9,12 @@ using Ionic.Zlib;
 using System.IO.Compression;
 #endif
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Network.Protocols {
 
 	/// <summary> Implements the packets for the original classic. </summary>
@@ -18,6 +24,10 @@ namespace ClassicalSharp.Network.Protocols {
 		
 		public override void Init() {
 			gzippedMap = new FixedBufferStream(net.reader.buffer);
+			Reset();
+		}
+		
+		public override void Reset() {
 			net.Set(Opcode.Handshake, HandleHandshake, 131);
 			net.Set(Opcode.Ping, HandlePing, 1);
 			net.Set(Opcode.LevelInit, HandleLevelInit, 1);
@@ -50,14 +60,13 @@ namespace ClassicalSharp.Network.Protocols {
 
 		void HandleHandshake() {
 			byte protocolVer = reader.ReadUInt8();
-			net.ServerName = reader.ReadCp437String();
-			net.ServerMotd = reader.ReadCp437String();
+			net.ServerName = reader.ReadString();
+			net.ServerMotd = reader.ReadString();
 			game.Chat.SetLogName(net.ServerName);
 			
 			game.LocalPlayer.Hacks.SetUserType(reader.ReadUInt8());
-			game.LocalPlayer.Hacks.ParseHackFlags(net.ServerName, net.ServerMotd);
-			game.LocalPlayer.CheckHacksConsistency();
-			game.Events.RaiseHackPermissionsChanged();
+			game.LocalPlayer.Hacks.HacksFlags = net.ServerName + net.ServerMotd;
+			game.LocalPlayer.Hacks.UpdateHacksState();
 		}
 		
 		void HandlePing() { }
@@ -65,6 +74,8 @@ namespace ClassicalSharp.Network.Protocols {
 		void HandleLevelInit() {
 			if (gzipStream != null) return;
 			game.World.Reset();
+			game.WorldEvents.RaiseOnNewMap();
+			
 			prevScreen = game.Gui.activeScreen;
 			if (prevScreen is LoadingMapScreen)
 				prevScreen = null;
@@ -90,14 +101,13 @@ namespace ClassicalSharp.Network.Protocols {
 			mapSizeIndex = 0;
 			mapIndex = 0;
 			mapReceiveStart = DateTime.UtcNow;
-			net.task.Interval = 1.0 / 60;
 		}
 		
 		void HandleLevelDataChunk() {
 			// Workaround for some servers that send LevelDataChunk before LevelInit
 			// due to their async packet sending behaviour.
 			if (gzipStream == null) HandleLevelInit();
-			int usedLength = reader.ReadInt16();
+			int usedLength = reader.ReadUInt16();
 			gzippedMap.pos = 0;
 			gzippedMap.bufferPos = reader.index;
 			gzippedMap.len = usedLength;
@@ -122,7 +132,6 @@ namespace ClassicalSharp.Network.Protocols {
 		}
 		
 		void HandleLevelFinalise() {
-			net.task.Interval = 1.0 / 20;
 			game.Gui.SetNewScreen(null);
 			game.Gui.activeScreen = prevScreen;
 			if (prevScreen != null && prevCursorVisible != game.CursorVisible) {
@@ -130,13 +139,18 @@ namespace ClassicalSharp.Network.Protocols {
 			}
 			prevScreen = null;
 			
-			int mapWidth = reader.ReadInt16();
-			int mapHeight = reader.ReadInt16();
-			int mapLength = reader.ReadInt16();
+			int mapWidth = reader.ReadUInt16();
+			int mapHeight = reader.ReadUInt16();
+			int mapLength = reader.ReadUInt16();
 			
 			double loadingMs = (DateTime.UtcNow - mapReceiveStart).TotalMilliseconds;
 			Utils.LogDebug("map loading took: " + loadingMs);
+			
+			#if USE16_BIT
+			game.World.SetNewMap(Utils.UInt8sToUInt16s(map), mapWidth, mapHeight, mapLength);
+			#else
 			game.World.SetNewMap(map, mapWidth, mapHeight, mapLength);
+			#endif
 			game.WorldEvents.RaiseOnNewMapLoaded();
 			
 			map = null;
@@ -147,35 +161,25 @@ namespace ClassicalSharp.Network.Protocols {
 		}
 		
 		void HandleSetBlock() {
-			int x = reader.ReadInt16();
-			int y = reader.ReadInt16();
-			int z = reader.ReadInt16();
-			byte type = reader.ReadUInt8();
-			
-			#if DEBUG_BLOCKS
-			if (game.World.IsNotLoaded) {
-				Utils.LogDebug("Server tried to update a block while still sending us the map!");
-			} else if (!game.World.IsValidPos(x, y, z)) {
-				Utils.LogDebug("Server tried to update a block at an invalid position!");
-			} else {
-				game.UpdateBlock(x, y, z, type);
+			int x = reader.ReadUInt16();
+			int y = reader.ReadUInt16();
+			int z = reader.ReadUInt16();
+			byte block = reader.ReadUInt8();
+			if (game.World.blocks != null && game.World.IsValidPos(x, y, z)) {
+				game.UpdateBlock(x, y, z, block);
 			}
-			#else
-			if (!game.World.IsNotLoaded && game.World.IsValidPos(x, y, z)) {
-				game.UpdateBlock(x, y, z, type);
-			}
-			#endif
 		}
 		
 		void HandleAddEntity() {
 			byte id = reader.ReadUInt8();
-			string name = reader.ReadAsciiString();
+			string name = reader.ReadString();
 			string skin = name;
-			net.CheckName(id, ref name, ref skin);
+			net.CheckName(id, ref name, ref skin);			
+			net.AddEntity(id, name, skin, true);			
 			
-			net.AddEntity(id, name, skin, true);
-			// Also workaround for LegendCraft as it declares it supports ExtPlayerList but
-			// doesn't send ExtAddPlayerName packets.
+			if (!net.addEntityHack) return;
+			// Workaround for some servers that declare they support ExtPlayerList,
+			// but doesn't send ExtAddPlayerName packets.
 			net.AddTablistEntry(id, name, name, "Players", 0);
 			net.needRemoveNames[id >> 3] |= (byte)(1 << (id & 0x7));
 		}
@@ -187,23 +191,25 @@ namespace ClassicalSharp.Network.Protocols {
 		
 		void HandleRelPosAndOrientationUpdate() {
 			byte id = reader.ReadUInt8();
-			float x = reader.ReadInt8() / 32f;
-			float y = reader.ReadInt8() / 32f;
-			float z = reader.ReadInt8() / 32f;
+			Vector3 v;
+			v.X = reader.ReadInt8() / 32f;
+			v.Y = reader.ReadInt8() / 32f;
+			v.Z = reader.ReadInt8() / 32f;
 			
 			float rotY =  (float)Utils.PackedToDegrees(reader.ReadUInt8());
 			float headX = (float)Utils.PackedToDegrees(reader.ReadUInt8());
-			LocationUpdate update = LocationUpdate.MakePosAndOri(x, y, z, rotY, headX, true);
+			LocationUpdate update = LocationUpdate.MakePosAndOri(v, rotY, headX, true);
 			net.UpdateLocation(id, update, true);
 		}
 		
 		void HandleRelPositionUpdate() {
 			byte id = reader.ReadUInt8();
-			float x = reader.ReadInt8() / 32f;
-			float y = reader.ReadInt8() / 32f;
-			float z = reader.ReadInt8() / 32f;
+			Vector3 v;
+			v.X = reader.ReadInt8() / 32f;
+			v.Y = reader.ReadInt8() / 32f;
+			v.Z = reader.ReadInt8() / 32f;
 			
-			LocationUpdate update = LocationUpdate.MakePos(x, y, z, true);
+			LocationUpdate update = LocationUpdate.MakePos(v, true);
 			net.UpdateLocation(id, update, true);
 		}
 		
@@ -230,71 +236,68 @@ namespace ClassicalSharp.Network.Protocols {
 			string text = reader.ReadChatString(ref type);
 			if (prepend) text = "&e" + text;
 			
-			if (!text.StartsWith("^detail.user", StringComparison.OrdinalIgnoreCase))
+			if (!Utils.CaselessStarts(text, "^detail.user")) {
 				game.Chat.Add(text, (MessageType)type);
+			}
 		}
 		
 		void HandleKick() {
-			string reason = reader.ReadCp437String();
+			string reason = reader.ReadString();
 			game.Disconnect("&eLost connection to the server", reason);
 			net.Dispose();
 		}
 		
 		void HandleSetPermission() {
 			game.LocalPlayer.Hacks.SetUserType(reader.ReadUInt8());
+			game.LocalPlayer.Hacks.UpdateHacksState();
 		}
 		
 		internal void ReadAbsoluteLocation(byte id, bool interpolate) {
-			float x = reader.ReadInt16() / 32f;
-			float y = (reader.ReadInt16() - 51) / 32f; // We have to do this.
-			if (id == EntityList.SelfID) y += 22/32f;			
-			float z = reader.ReadInt16() / 32f;
-			
+			Vector3 P = reader.ReadPosition(id);	
 			float rotY =  (float)Utils.PackedToDegrees(reader.ReadUInt8());
 			float headX = (float)Utils.PackedToDegrees(reader.ReadUInt8());
 			
 			if (id == EntityList.SelfID) net.receivedFirstPosition = true;
-			LocationUpdate update = LocationUpdate.MakePosAndOri(x, y, z, rotY, headX, false);
+			LocationUpdate update = LocationUpdate.MakePosAndOri(P, rotY, headX, false);
 			net.UpdateLocation(id, update, interpolate);
 		}
 		#endregion
 		
 		#region Write
 		
-		internal void SendChat(string text, bool partial) {
-			int payload = !net.SupportsPartialMessages ? 0xFF: (partial ? 1 : 0);
-			writer.WriteUInt8((byte)Opcode.Message);
-			
+		internal void WriteChat(string text, bool partial) {
+			int payload = !net.SupportsPartialMessages ? EntityList.SelfID : (partial ? 1 : 0);
+			writer.WriteUInt8((byte)Opcode.Message);			
 			writer.WriteUInt8((byte)payload);
 			writer.WriteString(text);
-			net.SendPacket();
 		}
 		
-		internal void SendPosition(Vector3 pos, float rotY, float headX) {
-			byte payload = net.cpeData.sendHeldBlock ? game.Inventory.HeldBlock : (byte)0xFF;
+		internal void WritePosition(Vector3 pos, float rotY, float headX) {
+			int payload = net.cpeData.sendHeldBlock ? game.Inventory.Selected : EntityList.SelfID;
 			writer.WriteUInt8((byte)Opcode.EntityTeleport);
 			
-			writer.WriteUInt8(payload); // held block when using HeldBlock, otherwise just 255
-			writer.WriteInt16((short)(pos.X * 32));
-			writer.WriteInt16((short)((int)(pos.Y * 32) + 51));
-			writer.WriteInt16((short)(pos.Z * 32));
-			writer.WriteUInt8((byte)Utils.DegreesToPacked(rotY));
-			writer.WriteUInt8((byte)Utils.DegreesToPacked(headX));
-			net.SendPacket();
+			writer.WriteUInt8((byte)payload); // held block when using HeldBlock, otherwise just 255
+			writer.WritePosition(pos);
+			writer.WriteUInt8(Utils.DegreesToPacked(rotY));
+			writer.WriteUInt8(Utils.DegreesToPacked(headX));
 		}
 		
-		internal void SendSetBlock(int x, int y, int z, bool place, byte block) {
+		internal void WriteSetBlock(int x, int y, int z, bool place, BlockID block) {
 			writer.WriteUInt8((byte)Opcode.SetBlockClient);
 			
 			writer.WriteInt16((short)x);
 			writer.WriteInt16((short)y);
 			writer.WriteInt16((short)z);
 			writer.WriteUInt8(place ? (byte)1 : (byte)0);
+			
+			#if USE16_BIT
+			writer.WriteUInt8((byte)block);
+			#else
 			writer.WriteUInt8(block);
-			net.SendPacket();
+			#endif
 		}
 		
-		internal void SendLogin(string username, string verKey) {
+		internal void WriteLogin(string username, string verKey) {
 			byte payload = game.UseCPE ? (byte)0x42 : (byte)0x00;
 			writer.WriteUInt8((byte)Opcode.Handshake);
 			
@@ -302,7 +305,6 @@ namespace ClassicalSharp.Network.Protocols {
 			writer.WriteString(username);
 			writer.WriteString(verKey);
 			writer.WriteUInt8(payload);
-			net.SendPacket();
 		}
 		
 		#endregion

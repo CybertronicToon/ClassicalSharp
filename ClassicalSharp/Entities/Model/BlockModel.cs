@@ -7,22 +7,28 @@ using ClassicalSharp.Renderers;
 using ClassicalSharp.Textures;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Model {
 
 	public class BlockModel : IModel {
 		
-		byte block = (byte)Block.Air;
+		BlockID block = Block.Air;
 		float height;
 		TerrainAtlas1D atlas;
-		bool bright;
 		Vector3 minBB, maxBB;
-		public bool NoShade = false, SwitchOrder = false;
-		public float CosX = 1, SinX = 0;
 		ModelCache cache;
+		int lastTexIndex = -1;
 		
 		public BlockModel(Game game) : base(game) {
 			cache = game.ModelCache;
 			Bobbing = false;
+			UsesSkin = false;
+			Pushes = false;
 		}
 		
 		public override void CreateParts() { }
@@ -30,10 +36,10 @@ namespace ClassicalSharp.Model {
 		public override float NameYOffset { get { return height + 0.075f; } }
 		
 		public override float GetEyeY(Entity entity) {
-			byte block = Byte.Parse(entity.ModelName);
-			float minY = game.BlockInfo.MinBB[block].Y;
-			float maxY = game.BlockInfo.MaxBB[block].Y;
-			return block == 0 ? 1 : (minY + maxY) / 2;
+			BlockID block = entity.ModelBlock;
+			float minY = BlockInfo.MinBB[block].Y;
+			float maxY = BlockInfo.MaxBB[block].Y;
+			return block == Block.Air ? 1 : (minY + maxY) / 2;
 		}
 		
 		static Vector3 colShrink = new Vector3(0.75f/16, 0.75f/16, 0.75f/16);
@@ -41,229 +47,117 @@ namespace ClassicalSharp.Model {
 			get { return (maxBB - minBB) - colShrink; } // to fit slightly inside
 		}
 		
-		static Vector3 offset = new Vector3(-0.5f, -0.5f, -0.5f);
+		static Vector3 offset = new Vector3(-0.5f, 0.0f, -0.5f);
 		public override AABB PickingBounds {
 			get { return new AABB(minBB, maxBB).Offset(offset); }
 		}
 		
-		public void CalcState(byte block) {
-			if (game.BlockInfo.Draw[block] == DrawType.Gas) {
-				bright = false;
+		public override void RecalcProperties(Entity p) {
+			BlockID block = p.ModelBlock;
+			if (BlockInfo.Draw[block] == DrawType.Gas) {
 				minBB = Vector3.Zero;
 				maxBB = Vector3.One;
 				height = 1;
 			} else {
-				bright = game.BlockInfo.FullBright[block];
-				minBB = game.BlockInfo.MinBB[block];
-				maxBB = game.BlockInfo.MaxBB[block];
+				minBB = BlockInfo.MinBB[block];
+				maxBB = BlockInfo.MaxBB[block];
 				height = maxBB.Y - minBB.Y;
-				if (game.BlockInfo.Draw[block] == DrawType.Sprite)
-					height = 1;
 			}
 		}
-		
-		public override bool ShouldRender(Entity p, FrustumCulling culling) {
-			block = Utils.FastByte(p.ModelName);
-			CalcState(block);
-			return base.ShouldRender(p, culling);
-		}
-		
-		public override float RenderDistance(Entity p) {
-			block = Utils.FastByte(p.ModelName);
-			CalcState(block);
-			return base.RenderDistance(p);
-		}
-		
-		int lastTexId = -1, brightCol;
-		protected override void DrawModel(Entity p) {
-			brightCol = FastColour.WhitePacked;
+
+		public override void DrawModel(Entity p) {
+			block = p.ModelBlock;
+			RecalcProperties(p);
+			if (BlockInfo.Draw[block] == DrawType.Gas) return;
 			
-			// TODO: using 'is' is ugly, but means we can avoid creating
-			// a string every single time held block changes.
-			if (p is FakePlayer) {
-				Player realP = game.LocalPlayer;
-				Vector3I P = Vector3I.Floor(realP.EyePosition);
-				col = game.World.IsValidPos(P) ? game.Lighting.LightCol(P.X, P.Y, P.Z) : game.Lighting.Outside;
-				
-				// Adjust pitch so angle when looking straight down is 0.
-				float adjHeadX = realP.HeadX - 90;
-				if (adjHeadX < 0) adjHeadX += 360;
-				
-				// Adjust colour so held block is brighter when looking straght up
-				float t = Math.Abs(adjHeadX - 180) / 180;
-				float colScale = Utils.Lerp(0.9f, 0.7f, t);
-				col = FastColour.ScalePacked(col, colScale);
-				block = ((FakePlayer)p).Block;
-			} else {
-				block = Utils.FastByte(p.ModelName);
-			}
+			if (BlockInfo.FullBright[block]) {
+				for (int i = 0; i < cols.Length; i++) {
+					cols[i] = FastColour.WhitePacked;
+				}
+			}			
 			
-			if (game.BlockInfo.Tinted[block]) {
-                FastColour fogCol = game.BlockInfo.FogColour[block];
-                brightCol = fogCol.Pack();
-                
-                FastColour newCol = FastColour.Unpack(col);
-                newCol *= fogCol;
-                col = newCol.Pack();
-			}
-			
-			CalcState(block);
-			if (game.BlockInfo.Draw[block] == DrawType.Gas) return;
-			
-			lastTexId = -1;
+			lastTexIndex = -1;
 			atlas = game.TerrainAtlas1D;
-			bool sprite = game.BlockInfo.Draw[block] == DrawType.Sprite;
-			DrawParts(sprite);			
+			bool sprite = BlockInfo.Draw[block] == DrawType.Sprite;
+			DrawParts(sprite);
 			if (index == 0) return;
 			
-			IGraphicsApi gfx = game.Graphics;
-			gfx.BindTexture(lastTexId);
-			TransformVertices();
-			
-			if (sprite) gfx.FaceCulling = true;
-			UpdateVB();
-			if (sprite) gfx.FaceCulling = false;
+			if (sprite) game.Graphics.FaceCulling = true;
+			lastTexIndex = texIndex; Flush();
+			if (sprite) game.Graphics.FaceCulling = false;
 		}
 		
-		void FlushIfNotSame(int texIndex) {
-			int texId = game.TerrainAtlas1D.TexIds[texIndex];
-			if (texId == lastTexId) return;
-			
-			if (lastTexId != -1) {
-				game.Graphics.BindTexture(lastTexId);
-				TransformVertices();
+		void Flush() {
+			if (lastTexIndex != -1) {
+				game.Graphics.BindTexture(atlas.TexIds[lastTexIndex]);
 				UpdateVB();
 			}
-			lastTexId = texId;
+			
+			lastTexIndex = texIndex;
 			index = 0;
 		}
 		
-		void TransformVertices() {
-			for (int i = 0; i < index; i++) {
-				VertexP3fT2fC4b v = cache.vertices[i];
-				float t = 0;
-				t = CosX * v.Y + SinX * v.Z; v.Z = -SinX * v.Y + CosX * v.Z; v.Y = t;        // Inlined RotX
-				cache.vertices[i] = v;
-			}
-		}
-		
+		CuboidDrawer drawer = new CuboidDrawer();
 		void DrawParts(bool sprite) {
-			// SwitchOrder is needed for held block, which renders without depth testing
 			if (sprite) {
-				if (SwitchOrder) {
-					SpriteZQuad(Side.Back, false);
-					SpriteXQuad(Side.Right, false);
-				} else {
-					SpriteXQuad(Side.Right, false);
-					SpriteZQuad(Side.Back, false);
-				}
+				SpriteXQuad(false, false);
+				SpriteXQuad(false, true);
+				SpriteZQuad(false, false);
+				SpriteZQuad(false, true);
 				
-				if (SwitchOrder) {
-					SpriteXQuad(Side.Right, true);
-					SpriteZQuad(Side.Back, true);
-				} else {
-					SpriteZQuad(Side.Back, true);
-					SpriteXQuad(Side.Right, true);
-				}
+				SpriteZQuad(true, false);
+				SpriteZQuad(true, true);
+				SpriteXQuad(true, false);
+				SpriteXQuad(true, true);
 			} else {
-				YQuad(0, Side.Bottom, FastColour.ShadeYBottom);
-				if (SwitchOrder) {
-					XQuad(maxBB.X - 0.5f, Side.Right, FastColour.ShadeX);
-					ZQuad(maxBB.Z - 0.5f, Side.Back,  FastColour.ShadeZ);					
-					XQuad(minBB.X - 0.5f, Side.Left,  FastColour.ShadeX);
-					ZQuad(minBB.Z - 0.5f, Side.Front, FastColour.ShadeZ);
-				} else {
-					ZQuad(minBB.Z - 0.5f, Side.Front, FastColour.ShadeZ);
-					XQuad(maxBB.X - 0.5f, Side.Right, FastColour.ShadeX);
-					ZQuad(maxBB.Z - 0.5f, Side.Back,  FastColour.ShadeZ);
-					XQuad(minBB.X - 0.5f, Side.Left,  FastColour.ShadeX);
-				}
-				YQuad(height, Side.Top, 1.0f);
+				drawer.elementsPerAtlas1D = atlas.elementsPerAtlas1D;
+				drawer.invVerElementSize = atlas.invElementSize;
+				
+				drawer.minBB = BlockInfo.MinBB[block]; drawer.minBB.Y = 1 - drawer.minBB.Y;
+				drawer.maxBB = BlockInfo.MaxBB[block]; drawer.maxBB.Y = 1 - drawer.maxBB.Y;
+				
+				Vector3 min = BlockInfo.RenderMinBB[block];
+				Vector3 max = BlockInfo.RenderMaxBB[block];
+				drawer.x1 = min.X - 0.5f; drawer.y1 = min.Y; drawer.z1 = min.Z - 0.5f;
+				drawer.x2 = max.X - 0.5f; drawer.y2 = max.Y; drawer.z2 = max.Z - 0.5f;
+				
+				drawer.Tinted = BlockInfo.Tinted[block];
+				drawer.TintColour = BlockInfo.FogColour[block];
+				
+				drawer.Bottom(1, cols[1], GetTex(Side.Bottom), cache.vertices, ref index);
+				drawer.Front(1, cols[3], GetTex(Side.Front), cache.vertices, ref index);
+				drawer.Right(1, cols[5], GetTex(Side.Right), cache.vertices, ref index);
+				drawer.Back(1,  cols[2], GetTex(Side.Back),  cache.vertices, ref index);
+				drawer.Left(1,  cols[4], GetTex(Side.Left),  cache.vertices, ref index);
+				drawer.Top(1, cols[0], GetTex(Side.Top), cache.vertices, ref index);
 			}
 		}
 		
-		void YQuad(float y, int side, float shade) {
-			int texId = game.BlockInfo.GetTextureLoc(block, side), texIndex = 0;
-			TextureRec rec = atlas.GetTexRec(texId, 1, out texIndex);
-			FlushIfNotSame(texIndex);
-			int col = bright ? brightCol : (NoShade ? this.col : FastColour.ScalePacked(this.col, shade));
+		int GetTex(int side) {
+			int texLoc = BlockInfo.GetTextureLoc(block, side);
+			texIndex = texLoc / atlas.elementsPerAtlas1D;
 			
-			float vOrigin = (texId % atlas.elementsPerAtlas1D) * atlas.invElementSize;
-			rec.U1 = minBB.X; rec.U2 = maxBB.X;
-			rec.V1 = vOrigin + minBB.Z * atlas.invElementSize;
-			rec.V2 = vOrigin + maxBB.Z * atlas.invElementSize * 15.99f/16f;
-			
-			cache.vertices[index++] = new VertexP3fT2fC4b(minBB.X - 0.5f, y, minBB.Z - 0.5f, rec.U1, rec.V1, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(maxBB.X - 0.5f, y, minBB.Z - 0.5f, rec.U2, rec.V1, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(maxBB.X - 0.5f, y, maxBB.Z - 0.5f, rec.U2, rec.V2, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(minBB.X - 0.5f, y, maxBB.Z - 0.5f, rec.U1, rec.V2, col);
+			if (lastTexIndex != texIndex) Flush();
+			return texLoc;
 		}
-
-		void ZQuad(float z, int side, float shade) {
-			int texId = game.BlockInfo.GetTextureLoc(block, side), texIndex = 0;
-			TextureRec rec = atlas.GetTexRec(texId, 1, out texIndex);
-			FlushIfNotSame(texIndex);
-			int col = bright ? brightCol : (NoShade ? this.col : FastColour.ScalePacked(this.col, shade));
+		
+		void SpriteZQuad(bool firstPart, bool mirror) {
+			int texLoc = BlockInfo.GetTextureLoc(block, Side.Back);
+			TextureRec rec = atlas.GetTexRec(texLoc, 1, out texIndex);
+			if (lastTexIndex != texIndex) Flush();
 			
-			if (side == Side.Back) {
-				rec.U1 = minBB.X; rec.U2 = maxBB.X * 15.99f/16f;
-			} else {
-				rec.U1 = (1 - minBB.X); rec.U2 = (1 - maxBB.X) * 15.99f/16f;
+			int col = cols[0];
+			if (BlockInfo.Tinted[block]) {
+				col = Utils.Tint(col, BlockInfo.FogColour[block]);
 			}
 			
-			float vOrigin = (texId % atlas.elementsPerAtlas1D) * atlas.invElementSize;
-			rec.V1 = vOrigin + (1 - minBB.Y) * atlas.invElementSize;
-			rec.V2 = vOrigin + (1 - maxBB.Y) * atlas.invElementSize * 15.99f/16f;
-			
-			cache.vertices[index++] = new VertexP3fT2fC4b(minBB.X - 0.5f, 0, z, rec.U1, rec.V1, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(minBB.X - 0.5f, height, z, rec.U1, rec.V2, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(maxBB.X - 0.5f, height, z, rec.U2, rec.V2, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(maxBB.X - 0.5f, 0, z, rec.U2, rec.V1, col);
-		}
-
-		void XQuad(float x, int side, float shade) {
-			int texId = game.BlockInfo.GetTextureLoc(block, side), texIndex = 0;
-			TextureRec rec = atlas.GetTexRec(texId, 1, out texIndex);
-			FlushIfNotSame(texIndex);
-			int col = bright ? brightCol : (NoShade ? this.col : FastColour.ScalePacked(this.col, shade));
-			
-			if (side == Side.Left) {
-				rec.U1 = minBB.Z; rec.U2 = maxBB.Z * 15.99f/16f;
-			} else {
-				rec.U1 = (1 - minBB.Z); rec.U2 = (1 - maxBB.Z) * 15.99f/16f;
-			}
-			
-			float vOrigin = (texId % atlas.elementsPerAtlas1D) * atlas.invElementSize;
-			rec.V1 = vOrigin + (1 - minBB.Y) * atlas.invElementSize;
-			rec.V2 = vOrigin + (1 - maxBB.Y) * atlas.invElementSize * 15.99f/16f;			
-			
-			cache.vertices[index++] = new VertexP3fT2fC4b(x, 0, minBB.Z - 0.5f, rec.U1, rec.V1, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(x, height, minBB.Z - 0.5f, rec.U1, rec.V2, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(x, height, maxBB.Z - 0.5f, rec.U2, rec.V2, col);
-			cache.vertices[index++] = new VertexP3fT2fC4b(x, 0, maxBB.Z - 0.5f, rec.U2, rec.V1, col);
-		}
-		
-		
-		void SpriteZQuad(int side, bool firstPart) {
-			SpriteZQuad(side, firstPart, false);
-			SpriteZQuad(side, firstPart, true);
-		}
-		
-		void SpriteZQuad(int side, bool firstPart, bool mirror) {
-			int texId = game.BlockInfo.GetTextureLoc(block, side), texIndex = 0;
-			TextureRec rec = atlas.GetTexRec(texId, 1, out texIndex);
-			FlushIfNotSame(texIndex);
-			if (height != 1)
-				rec.V2 = rec.V1 + height * atlas.invElementSize * (15.99f/16f);
-			int col = bright ? brightCol : this.col;
-
 			float p1 = 0, p2 = 0;
 			if (firstPart) { // Need to break into two quads for when drawing a sprite model in hand.
 				if (mirror) { rec.U1 = 0.5f; p1 = -5.5f/16; }
-				else { rec.U2 = 0.5f; p2 = -5.5f/16; }
+				else {        rec.U2 = 0.5f; p2 = -5.5f/16; }
 			} else {
 				if (mirror) { rec.U2 = 0.5f; p2 = 5.5f/16; }
-				else { rec.U1 = 0.5f; p1 = 5.5f/16; }
+				else {        rec.U1 = 0.5f; p1 = 5.5f/16; }
 			}
 			
 			cache.vertices[index++] = new VertexP3fT2fC4b(p1, 0, p1, rec.U2, rec.V2, col);
@@ -271,27 +165,24 @@ namespace ClassicalSharp.Model {
 			cache.vertices[index++] = new VertexP3fT2fC4b(p2, 1, p2, rec.U1, rec.V1, col);
 			cache.vertices[index++] = new VertexP3fT2fC4b(p2, 0, p2, rec.U1, rec.V2, col);
 		}
-		
-		void SpriteXQuad(int side, bool firstPart) {
-			SpriteXQuad(side, firstPart, false);
-			SpriteXQuad(side, firstPart, true);
-		}
 
-		void SpriteXQuad(int side, bool firstPart, bool mirror) {
-			int texId = game.BlockInfo.GetTextureLoc(block, side), texIndex = 0;
-			TextureRec rec = atlas.GetTexRec(texId, 1, out texIndex);
-			FlushIfNotSame(texIndex);
-			if (height != 1)
-				rec.V2 = rec.V1 + height * atlas.invElementSize * (15.99f/16f);
-			int col = bright ? brightCol : this.col;
+		void SpriteXQuad(bool firstPart, bool mirror) {
+			int texLoc = BlockInfo.GetTextureLoc(block, Side.Right);
+			TextureRec rec = atlas.GetTexRec(texLoc, 1, out texIndex);
+			if (lastTexIndex != texIndex) Flush();
+
+			int col = cols[0];
+			if (BlockInfo.Tinted[block]) {
+				col = Utils.Tint(col, BlockInfo.FogColour[block]);
+			}
 			
 			float x1 = 0, x2 = 0, z1 = 0, z2 = 0;
 			if (firstPart) {
 				if (mirror) { rec.U2 = 0.5f; x2 = -5.5f/16; z2 = 5.5f/16; }
-				else { rec.U1 = 0.5f; x1 = -5.5f/16; z1 = 5.5f/16; }
+				else {        rec.U1 = 0.5f; x1 = -5.5f/16; z1 = 5.5f/16; }
 			} else {
 				if (mirror) { rec.U1 = 0.5f; x1 = 5.5f/16; z1 = -5.5f/16; }
-				else { rec.U2 = 0.5f; x2 = 5.5f/16; z2 = -5.5f/16; }
+				else {        rec.U2 = 0.5f; x2 = 5.5f/16; z2 = -5.5f/16; }
 			}
 
 			cache.vertices[index++] = new VertexP3fT2fC4b(x1, 0, z1, rec.U2, rec.V2, col);

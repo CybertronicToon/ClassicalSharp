@@ -19,7 +19,7 @@ namespace ClassicalSharp.Gui.Widgets {
 		public TextWidget SetLocation(Anchor horAnchor, Anchor verAnchor, int xOffset, int yOffset) {
 			HorizontalAnchor = horAnchor; VerticalAnchor = verAnchor;
 			XOffset = xOffset; YOffset = yOffset;
-			CalculatePosition();
+			Reposition();
 			return this;
 		}
 		
@@ -32,31 +32,30 @@ namespace ClassicalSharp.Gui.Widgets {
 		public bool IsValid { get { return texture.IsValid; } }
 		
 		public override void Init() {
-			DrawTextArgs args = new DrawTextArgs("I", font, true);
-			int height = game.Drawer2D.MeasureChatSize(ref args).Height;
+			int height = game.Drawer2D.FontHeight(font, true);
 			SetHeight(height);
 		}
 		
 		protected void SetHeight(int height) {
 			if (ReducePadding)
-				game.Drawer2D.ReducePadding(ref height, Utils.Floor(font.Size));
+				game.Drawer2D.ReducePadding(ref height, Utils.Floor(font.Size), 4);
 			defaultHeight = height;
 			Height = height;
 		}
 		
 		public void SetText(string text) {
 			gfx.DeleteTexture(ref texture);
-			if (String.IsNullOrEmpty(text)) {
+			if (IDrawer2D.EmptyText(text)) {
 				texture = new Texture();
 				Width = 0; Height = defaultHeight;
 			} else {
 				DrawTextArgs args = new DrawTextArgs(text, font, true);
-				texture = game.Drawer2D.MakeChatTextTexture(ref args, 0, 0);
+				texture = game.Drawer2D.MakeTextTexture(ref args, 0, 0);
 				if (ReducePadding)
-					game.Drawer2D.ReducePadding(ref texture, Utils.Floor(font.Size));
+					game.Drawer2D.ReducePadding(ref texture, Utils.Floor(font.Size), 4);
 				Width = texture.Width; Height = texture.Height;
 
-				CalculatePosition();
+				Reposition();
 				texture.X1 = X; texture.Y1 = Y;
 			}
 		}
@@ -70,9 +69,9 @@ namespace ClassicalSharp.Gui.Widgets {
 			gfx.DeleteTexture(ref texture);
 		}
 		
-		public override void CalculatePosition() {
+		public override void Reposition() {
 			int oldX = X, oldY = Y;
-			base.CalculatePosition();
+			base.Reposition();
 			
 			texture.X1 += X - oldX;
 			texture.Y1 += Y - oldY;

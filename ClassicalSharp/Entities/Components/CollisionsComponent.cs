@@ -3,6 +3,12 @@ using System;
 using ClassicalSharp.Physics;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Entities {
 	
 	/// <summary> Entity component that performs collision detection. </summary>
@@ -10,16 +16,16 @@ namespace ClassicalSharp.Entities {
 		
 		Game game;
 		Entity entity;
-		BlockInfo info;
 		public CollisionsComponent(Game game, Entity entity) {
 			this.game = game;
 			this.entity = entity;
-			info = game.BlockInfo;
 		}
 		
 		internal bool hitXMin, hitYMin, hitZMin;
 		internal bool hitXMax, hitYMax, hitZMax;
-		internal bool HorCollision { 
+		
+		/// <summary> Whether a collision occurred with any horizontal sides of any blocks. </summary>
+		internal bool HorizontalCollision { 
 			get { return hitXMin || hitXMax || hitZMin || hitZMax; } 
 		}
 		
@@ -39,25 +45,30 @@ namespace ClassicalSharp.Entities {
 
 		void CollideWithReachableBlocks(int count, ref Vector3 size,
 		                                ref AABB entityBB, ref AABB entityExtentBB) {
+			// Reset collision detection states
 			bool wasOn = entity.onGround;
 			entity.onGround = false;
 			hitXMin = false; hitYMin = false; hitZMin = false;
 			hitXMax = false; hitYMax = false; hitZMax = false;
 			AABB blockBB = default(AABB);
+			Vector3 bPos;
 
 			for (int i = 0; i < count; i++) {
+				// Unpack the block and coordinate data
 				State state = Searcher.stateCache[i];
-				Vector3 blockPos = new Vector3(state.X >> 3, state.Y >> 3, state.Z >> 3);
+				bPos.X = state.X >> 3; bPos.Y = state.Y >> 3; bPos.Z = state.Z >> 3;				
 				int block = (state.X & 0x7) | (state.Y & 0x7) << 3 | (state.Z & 0x7) << 6;
-				blockBB.Min = blockPos + info.MinBB[block];
-				blockBB.Max = blockPos + info.MaxBB[block];
+				blockBB.Min = bPos + BlockInfo.MinBB[block];
+				blockBB.Max = bPos + BlockInfo.MaxBB[block];
 				if (!entityExtentBB.Intersects(blockBB)) continue;
 				
+				// Recheck time to collide with block (as colliding with blocks modifies this)
 				float tx = 0, ty = 0, tz = 0;
 				Searcher.CalcTime(ref entity.Velocity, ref entityBB, ref blockBB, out tx, out ty, out tz);
 				if (tx > 1 || ty > 1 || tz > 1)
 					Utils.LogDebug("t > 1 in physics calculation.. this shouldn't have happened.");
 				
+				// Calculate the location of the entity when it collides with this block
 				Vector3 v = entity.Velocity;
 				v.X *= tx; v.Y *= ty; v.Z *= tz;
 				AABB finalBB = entityBB;
@@ -185,14 +196,14 @@ namespace ClassicalSharp.Entities {
 				for (int z = bbMin.Z; z <= bbMax.Z; z++)
 					for (int x = bbMin.X; x <= bbMax.X; x++)
 			{
-				byte block = game.World.GetPhysicsBlock(x, y, z);
-				Vector3 min = new Vector3(x, y, z) + info.MinBB[block];
-				Vector3 max = new Vector3(x, y, z) + info.MaxBB[block];
+				BlockID block = game.World.GetPhysicsBlock(x, y, z);
+				Vector3 min = new Vector3(x, y, z) + BlockInfo.MinBB[block];
+				Vector3 max = new Vector3(x, y, z) + BlockInfo.MaxBB[block];
 				
 				AABB blockBB = new AABB(min, max);
 				if (!blockBB.Intersects(adjFinalBB))
 					continue;
-				if (info.Collide[block] == CollideType.Solid)
+				if (BlockInfo.Collide[block] == CollideType.Solid)
 					return false;
 			}
 			return true;
@@ -200,20 +211,20 @@ namespace ClassicalSharp.Entities {
 		
 		void ClipX(ref Vector3 size, ref AABB entityBB, ref AABB entityExtentBB) {
 			entity.Velocity.X = 0;
-			entityBB.Min.X = entityExtentBB.Min.X = entity.Position.X - size.X / 2;
-			entityBB.Max.X = entityExtentBB.Max.X = entity.Position.X + size.X / 2;
+			entityBB.Min.X = entity.Position.X - size.X / 2; entityExtentBB.Min.X = entityBB.Min.X;
+			entityBB.Max.X = entity.Position.X + size.X / 2; entityExtentBB.Max.X = entityBB.Max.X;
 		}
 		
 		void ClipY(ref Vector3 size, ref AABB entityBB, ref AABB entityExtentBB) {
 			entity.Velocity.Y = 0;
-			entityBB.Min.Y = entityExtentBB.Min.Y = entity.Position.Y;
-			entityBB.Max.Y = entityExtentBB.Max.Y = entity.Position.Y + size.Y;
+			entityBB.Min.Y = entity.Position.Y;              entityExtentBB.Min.Y = entityBB.Min.Y;
+			entityBB.Max.Y = entity.Position.Y + size.Y;     entityExtentBB.Max.Y = entityBB.Max.Y;
 		}
 		
 		void ClipZ(ref Vector3 size, ref AABB entityBB, ref AABB entityExtentBB) {
 			entity.Velocity.Z = 0;
-			entityBB.Min.Z = entityExtentBB.Min.Z = entity.Position.Z - size.Z / 2;
-			entityBB.Max.Z = entityExtentBB.Max.Z = entity.Position.Z + size.Z / 2;
+			entityBB.Min.Z = entity.Position.Z - size.Z / 2; entityExtentBB.Min.Z = entityBB.Min.Z;
+			entityBB.Max.Z = entity.Position.Z + size.Z / 2; entityExtentBB.Max.Z = entityBB.Max.Z;
 		}
 	}
 }

@@ -4,6 +4,7 @@ using System.Drawing;
 using ClassicalSharp.GraphicsAPI;
 using ClassicalSharp.Model;
 using ClassicalSharp.Network;
+using ClassicalSharp.Particles;
 using OpenTK;
 #if ANDROID
 using Android.Graphics;
@@ -11,48 +12,69 @@ using Android.Graphics;
 
 namespace ClassicalSharp.Entities {
 
-	public abstract partial class Player : Entity {
+	public abstract class Player : Entity {
 		
-		public string DisplayName, SkinName, SkinIdentifier;
-		internal ShadowComponent shadow;
+		public string DisplayName, SkinName;
 		protected Texture nameTex;
+		internal bool fetchedSkin;
 		
 		public Player(Game game) : base(game) {
 			StepSize = 0.5f;
-			shadow = new ShadowComponent(game, this);
 			SetModel("humanoid");
 		}
 		
 		public override void Despawn() {
-			game.Graphics.DeleteTexture(ref TextureId);
+			Player first = FirstOtherWithSameSkin();
+			if (first == null) {
+				game.Graphics.DeleteTexture(ref TextureId);
+				ResetSkin();
+			}
+			ContextLost();
+		}
+		
+		public override void ContextLost() {
 			game.Graphics.DeleteTexture(ref nameTex.ID);
 		}
+		
+		public override void ContextRecreated() { UpdateName(); }
 		
 		protected void MakeNameTexture() {
 			using (Font font = new Font(game.FontName, 24)) {
 				DrawTextArgs args = new DrawTextArgs(DisplayName, font, false);
-				Size size = game.Drawer2D.MeasureBitmappedSize(ref args);
-				if (size.Width == 0) { nameTex = new Texture(-1, 0, 0, 0, 0, 1, 1); return; }
-				size.Width += 3; size.Height += 3;
+				bool bitmapped = game.Drawer2D.UseBitmappedChat; // we want names to always be drawn without
+				game.Drawer2D.UseBitmappedChat = true;
+				Size size = game.Drawer2D.MeasureSize(ref args);
 				
-				using (IDrawer2D drawer = game.Drawer2D)
-					using (Bitmap bmp = IDrawer2D.CreatePow2Bitmap(size))
-				{
-					drawer.SetBitmap(bmp);
-					args.Text = "&\xFF" + Utils.StripColours(args.Text);
-					game.Drawer2D.Colours['\xFF'] = new FastColour(80, 80, 80);
-					game.Drawer2D.DrawBitmappedText(ref args, 3, 3);
-					game.Drawer2D.Colours['\xFF'] = default(FastColour);
-					
-					args.Text = DisplayName;
-					game.Drawer2D.DrawBitmappedText(ref args, 0, 0);
-					nameTex = game.Drawer2D.Make2DTexture(bmp, size, 0, 0);
+				if (size.Width == 0) {
+					nameTex = new Texture(-1, 0, 0, 0, 0, 1, 1);
+				} else {
+					nameTex = MakeNameTextureImpl(size, args);
 				}
+				game.Drawer2D.UseBitmappedChat = bitmapped;
+			}
+		}
+		
+		Texture MakeNameTextureImpl(Size size, DrawTextArgs args) {
+			size.Width += 3; size.Height += 3;
+			
+			using (IDrawer2D drawer = game.Drawer2D)
+				using (Bitmap bmp = IDrawer2D.CreatePow2Bitmap(size))
+			{
+				drawer.SetBitmap(bmp);
+				args.Text = "&\xFF" + Utils.StripColours(args.Text);
+				IDrawer2D.Cols['\xFF'] = new FastColour(80, 80, 80);
+				game.Drawer2D.DrawText(ref args, 3, 3);
+				IDrawer2D.Cols['\xFF'] = default(FastColour);
+				
+				args.Text = DisplayName;
+				game.Drawer2D.DrawText(ref args, 0, 0);
+				return game.Drawer2D.Make2DTexture(bmp, size, 0, 0);
 			}
 		}
 		
 		public void UpdateName() {
-			game.Graphics.DeleteTexture(ref nameTex);
+			ContextLost();
+			if (game.Graphics.LostContext) return;
 			MakeNameTexture();
 		}
 		
@@ -62,57 +84,110 @@ namespace ClassicalSharp.Entities {
 			
 			IGraphicsApi gfx = game.Graphics;
 			gfx.BindTexture(nameTex.ID);
-			Vector3 pos = Position; pos.Y += Model.NameYOffset * ModelScale;
-			float scale = Math.Min(1, Model.NameScale * ModelScale) / 70f;
 			
-			Vector3 p111, p121, p212, p222;
+			Vector3 pos;
+			Model.RecalcProperties(this);
+			Vector3.TransformY(Model.NameYOffset, ref transform, out pos);
+			float scale = Math.Min(1, Model.NameScale * ModelScale.Y) / 70f;
 			int col = FastColour.WhitePacked;
 			Vector2 size = new Vector2(nameTex.Width * scale, nameTex.Height * scale);
-			Utils.CalcBillboardPoints(size, pos, ref game.View, out p111, out p121, out p212, out p222);
-			gfx.texVerts[0] = new VertexP3fT2fC4b(ref p111, nameTex.U1, nameTex.V2, col);
-			gfx.texVerts[1] = new VertexP3fT2fC4b(ref p121, nameTex.U1, nameTex.V1, col);
-			gfx.texVerts[2] = new VertexP3fT2fC4b(ref p222, nameTex.U2, nameTex.V1, col);
-			gfx.texVerts[3] = new VertexP3fT2fC4b(ref p212, nameTex.U2, nameTex.V2, col);
+			
+			if (game.Entities.NamesMode == NameMode.AllUnscaled && game.LocalPlayer.Hacks.CanSeeAllNames) {
+				// Get W component of transformed position
+				Matrix4 mat;
+				Matrix4.Mult(out mat, ref gfx.View, ref gfx.Projection); // TODO: This mul is slow, avoid it
+				float tempW = pos.X * mat.Row0.W + pos.Y * mat.Row1.W + pos.Z * mat.Row2.W + mat.Row3.W;
+				size.X *= tempW * 0.2f; size.Y *= tempW * 0.2f;
+			}
+			
+			int index = 0;
+			TextureRec rec; rec.U1 = 0; rec.V1 = 0; rec.U2 = nameTex.U2; rec.V2 = nameTex.V2;
+			Particle.DoRender(ref gfx.View, ref size, ref pos, ref rec, col, gfx.texVerts, ref index);
 			
 			gfx.SetBatchFormat(VertexFormat.P3fT2fC4b);
-			gfx.UpdateDynamicIndexedVb(DrawMode.Triangles, gfx.texVb, gfx.texVerts, 4);
+			gfx.UpdateDynamicVb_IndexedTris(gfx.texVb, gfx.texVerts, 4);
 		}
 		
 		protected void CheckSkin() {
-			DownloadedItem item;
-			if (!game.AsyncDownloader.TryGetItem(SkinIdentifier, out item)) return;
+			if (!fetchedSkin && Model.UsesSkin) {
+				Player first = FirstOtherWithSameSkinAndFetchedSkin();
+				if (first == null) {
+					game.AsyncDownloader.DownloadSkin(SkinName, SkinName);
+				} else {
+					ApplySkin(first);
+				}
+				fetchedSkin = true;
+			}
 			
-			if (item == null || item.Data == null) { ResetSkin(); return; }
+			Request item;
+			if (!game.AsyncDownloader.TryGetItem(SkinName, out item)) return;
+			if (item == null || item.Data == null) { SetSkinAll(true); return; }
 			
 			Bitmap bmp = (Bitmap)item.Data;
 			game.Graphics.DeleteTexture(ref TextureId);
-			uScale = 1; vScale = 1;
-			EnsurePow2(ref bmp);
 			
+			SetSkinAll(true);		
+			EnsurePow2(ref bmp);			
 			SkinType = Utils.GetSkinType(bmp);
+			
 			if (SkinType == SkinType.Invalid) {
-				string format = "Skin {0} has unsupported dimensions({1}, {2}), reverting to default.";
-				Utils.LogDebug(format, SkinName, bmp.Width, bmp.Height);
-				bmp.Dispose();
-				
-				ResetSkin(); return;
+				SetSkinAll(true);
+			} else {
+				if (Model.UsesHumanSkin) ClearHat(bmp, SkinType);
+				TextureId = game.Graphics.CreateTexture(bmp, true, false);
+				SetSkinAll(false);
 			}
-			
-			if (Model is HumanoidModel)
-				ClearHat(bmp, SkinType);
-			TextureId = game.Graphics.CreateTexture(bmp, true);
-			MobTextureId = -1;
-			
-			// Custom mob textures.
-			if (Utils.IsUrlPrefix(SkinName, 0) && item.TimeAdded > lastModelChange)
-				MobTextureId = TextureId;
 			bmp.Dispose();
 		}
 		
-		void ResetSkin() {			
+		Player FirstOtherWithSameSkin() {
+			Entity[] entities = game.Entities.List;
+			for (int i = 0; i < EntityList.MaxCount; i++) {
+				if (entities[i] == null || entities[i] == this) continue;
+				Player p = entities[i] as Player;
+				if (p != null && p.SkinName == SkinName) return p;
+			}
+			return null;
+		}
+		
+		Player FirstOtherWithSameSkinAndFetchedSkin() {
+			Entity[] entities = game.Entities.List;
+			for (int i = 0; i < EntityList.MaxCount; i++) {
+				if (entities[i] == null || entities[i] == this) continue;
+				Player p = entities[i] as Player;
+				if (p != null && p.SkinName == SkinName && p.fetchedSkin) return p;
+			}
+			return null;
+		}
+		
+		// Apply or reset skin, for all players with same skin
+		void SetSkinAll(bool reset) {
+			Entity[] entities = game.Entities.List;
+			for (int i = 0; i < EntityList.MaxCount; i++) {
+				if (entities[i] == null) continue;
+				Player p = entities[i] as Player;
+				if (p == null || p.SkinName != SkinName) continue;
+				
+				if (reset) { p.ResetSkin(); } 
+				else { p.ApplySkin(this); }
+			}
+		}
+		
+		void ApplySkin(Player src) {
+			TextureId = src.TextureId;
+			MobTextureId = -1;
+			SkinType = src.SkinType;
+			uScale = src.uScale; vScale = src.vScale;
+			
+			// Custom mob textures.
+			if (Utils.IsUrlPrefix(SkinName, 0)) MobTextureId = TextureId;
+		}
+		
+		internal void ResetSkin() {
+			uScale = 1; vScale = 1;
 			MobTextureId = -1;
 			TextureId = -1;
-			SkinType = game.DefaultPlayerSkinType;			
+			SkinType = game.DefaultPlayerSkinType;
 		}
 		
 		unsafe static void ClearHat(Bitmap bmp, SkinType skinType) {

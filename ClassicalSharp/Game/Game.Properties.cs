@@ -42,10 +42,11 @@ namespace ClassicalSharp {
 		void OnNewMapLoaded(Game game);
 	}
 	
+	public delegate void ScheduledTaskCallback(ScheduledTask task);	
 	/// <summary> Represents a task that runs on the main thread every certain interval. </summary>
 	public class ScheduledTask {
 		public double Accumulator, Interval;
-		public Action<ScheduledTask> Callback;
+		public ScheduledTaskCallback Callback;
 	}
 	
 	public partial class Game {
@@ -77,10 +78,6 @@ namespace ClassicalSharp {
 		/// <summary> List of all cameras the user can use to view the world. </summary>
 		public List<Camera> Cameras = new List<Camera>();
 		
-		/// <summary> Contains the metadata about each currently defined block. </summary>
-		/// <remarks> e.g. blocks light, height, texture IDs, etc. </remarks>
-		public BlockInfo BlockInfo;
-		
 		/// <summary> Total rendering time(in seconds) elapsed since the client was started. </summary>
 		public double accumulator;
 		public TerrainAtlas2D TerrainAtlas;
@@ -111,7 +108,7 @@ namespace ClassicalSharp {
 		public PickedPosRenderer Picking;
 		public PickedPos SelectedPos = new PickedPos(), CameraClipPos = new PickedPos();
 		public ModelCache ModelCache;
-		internal string skinServer, chatInInputBuffer = null;
+		internal string skinServer;
 		internal int defaultIb;
 		public OtherEvents Events = new OtherEvents();
 		public EntityEvents EntityEvents = new EntityEvents();
@@ -158,14 +155,16 @@ namespace ClassicalSharp {
 		
 		/// <summary> Whether players should animate using simple swinging parallel to their bodies. </summary>
 		public bool SimpleArmsAnim;
+
+		/// <summary> Whether the arm model should use the classic position. </summary>
+		public bool ClassicArmModel;
 		
 		/// <summary> Whether mouse rotation on the y axis should be inverted. </summary>
 		public bool InvertMouse;
 		
-		public long Vertices;
+		public int Vertices;
 		public FrustumCulling Culling;
 		public AsyncDownloader AsyncDownloader;
-		public Matrix4 View, Projection;
 		
 		/// <summary> How sensitive the client is to changes in the player's mouse position. </summary>
 		public int MouseSensitivity = 30;
@@ -176,11 +175,15 @@ namespace ClassicalSharp {
 		
 		public bool PureClassic { get { return ClassicMode && !ClassicHacks; } }
 		
-		public bool AllowCustomBlocks, UseCPE, AllowServerTextures;
+		public bool UseCustomBlocks, UseCPE, UseServerTextures;
 		
 		public bool SmoothLighting;
 		
-		public bool autoRotate = true;
+		public bool ChatLogging = true;
+		
+		public bool AutoRotate = true;
+		
+		public bool SmoothCamera = false;
 		
 		public string FontName = "Arial";
 		
@@ -188,7 +191,8 @@ namespace ClassicalSharp {
 		public bool ClickableChat = false, HideGui = false, ShowFPS = true;
 		internal float HotbarScale = 1, ChatScale = 1, InventoryScale = 1;
 		public bool ViewBobbing, ShowBlockInHand;
-		public bool UseSound, UseMusic, ModifiableLiquids;
+		public bool ModifiableLiquids;
+		public int SoundsVolume, MusicVolume;
 		
 		public Vector3 CurrentCameraPos;
 		
@@ -211,14 +215,14 @@ namespace ClassicalSharp {
 		/// <summary> Calculates the amount that the block inventory menu should be scaled by when rendered. </summary>
 		/// <remarks> Affected by both the current resolution of the window, as well as the
 		/// scaling specified by the user (field InventoryScale). </remarks>
-		public float GuiInventoryScale { get { return Scale(MinWindowScale  * InventoryScale); } }
+		public float GuiInventoryScale { get { return Scale(MinWindowScale * (InventoryScale * 0.5f)); } }
 		
 		/// <summary> Calculates the amount that 2D chat widgets should be scaled by when rendered. </summary>
 		/// <remarks> Affected by both the current resolution of the window, as well as the
 		/// scaling specified by the user (field ChatScale). </remarks>
-		public float GuiChatScale { get { return Scale((Height / 480f) * ChatScale); } }
+		public float GuiChatScale { get { return Scale(MinWindowScale * ChatScale); } }
 		
-		float MinWindowScale { get { return Math.Min(Width / 640f, Height / 480f); } }
+		int MinWindowScale { get { return 1 + (int)(Math.Floor(Math.Min(Width / 640f, Height / 480f))); } }
 		
 		public float Scale(float value) { 
 			return (float)Math.Round(value * 10, MidpointRounding.AwayFromZero) / 10; 
@@ -230,7 +234,7 @@ namespace ClassicalSharp {
 		/// this method returns "default.zip". </remarks>
 		public string DefaultTexturePack {
 			get {
-				string path = Path.Combine(Program.AppDirectory, TexturePack.Dir);
+				string path = Path.Combine(Program.AppDirectory, "texpacks");
 				path = Path.Combine(path, defTexturePack);
 				return File.Exists(path) && !ClassicMode ? defTexturePack : "default.zip"; 
 			}

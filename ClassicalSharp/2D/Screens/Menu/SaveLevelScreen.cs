@@ -20,12 +20,12 @@ namespace ClassicalSharp.Gui.Screens {
 		public override void Render(double delta) {
 			RenderMenuBounds();
 			gfx.Texturing = true;
-			RenderMenuWidgets(delta);
+			RenderWidgets(widgets, delta);
 			input.Render(delta);
 			if (desc != null) desc.Render(delta);
 			gfx.Texturing = false;
 			
-			float cX = game.Width / 2, cY = game.Height / 2;
+			int cX = game.Width / 2, cY = game.Height / 2;
 			gfx.Draw2DQuad(cX - 250, cY + 90, 500, 2, grey);
 			if (textPath == null) return;
 			SaveMap(textPath);
@@ -51,38 +51,44 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		public override void Init() {
+			base.Init();
 			game.Keyboard.KeyRepeat = true;
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 16, FontStyle.Regular);
-			
-			input = MenuInputWidget.Create(game, 500, 30, "",
-			                                     regularFont, new PathValidator())
+			regularFont = new Font(game.FontName, 16);
+			ContextRecreated();
+		}
+		
+		protected override void ContextLost() {
+			input.Dispose();
+			DisposeDescWidget();
+			base.ContextLost();
+		}
+		
+		protected override void ContextRecreated() {
+			input = MenuInputWidget.Create(game, 500, 30, "", regularFont, new PathValidator())
 				.SetLocation(Anchor.Centre, Anchor.Centre, 0, -30);
 			input.ShowCaret = true;
 			
 			widgets = new Widget[] {
-				ButtonWidget.Create(game, 301, 40, "Save", titleFont, SaveClassic)
+				ButtonWidget.Create(game, 300, "Save", titleFont, SaveClassic)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, 20),
-				ButtonWidget.Create(game, 201, 40, "Save schematic", titleFont, SaveSchematic)
+				ButtonWidget.Create(game, 200, "Save schematic", titleFont, SaveSchematic)
 					.SetLocation(Anchor.Centre, Anchor.Centre, -150, 120),
 				TextWidget.Create(game, "&eCan be imported into MCEdit", regularFont)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 110, 120),
 				null,
-				MakeBack(false, titleFont,
-				         (g, w) => g.Gui.SetNewScreen(new PauseScreen(g))),
+				MakeBack(false, titleFont, SwitchPause),
 			};
 		}
 		
 		
 		public override void OnResize(int width, int height) {
-			input.CalculatePosition();
+			input.Reposition();
 			base.OnResize(width, height);
 		}
 		
 		public override void Dispose() {
 			game.Keyboard.KeyRepeat = false;
-			input.Dispose();
-			DisposeDescWidget();
 			base.Dispose();
 		}
 		
@@ -105,9 +111,9 @@ namespace ClassicalSharp.Gui.Screens {
 			text = Path.Combine(Program.AppDirectory, "maps");
 			text = Path.Combine(text, file);
 			
-			if (File.Exists(text) && widget.Metadata == null) {
+			if (File.Exists(text) && ((ButtonWidget)widget).OptName == null) {
 				((ButtonWidget)widget).SetText("&cOverwrite existing?");
-				((ButtonWidget)widget).Metadata = true;
+				((ButtonWidget)widget).OptName = "O";
 			} else {
 				// NOTE: We don't immediately save here, because otherwise the 'saving...'
 				// will not be rendered in time because saving is done on the main thread.
@@ -118,14 +124,16 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		void RemoveOverwrites() {
-			RemoveOverwrite(widgets[0]); RemoveOverwrite(widgets[1]);
+			RemoveOverwrite(widgets[0], "Save"); 
+			RemoveOverwrite(widgets[1], "Save schematic");
 		}
 		
-		void RemoveOverwrite(Widget widget) {
+		void RemoveOverwrite(Widget widget, string defaultText) {
 			ButtonWidget button = (ButtonWidget)widget;
-			if (button.Metadata == null) return;
-			button.Metadata = null;
-			button.SetText("Save");
+			if (button.OptName == null) return;
+			
+			button.OptName = null;
+			button.SetText(defaultText);
 		}
 		
 		string textPath;

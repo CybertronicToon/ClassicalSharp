@@ -19,7 +19,7 @@ namespace ClassicalSharp.Textures {
 		Bitmap animBmp;
 		FastBitmap animsBuffer;
 		List<AnimationData> animations = new List<AnimationData>();
-		bool validated = false, useLavaAnim = false;
+		bool validated = false, useLavaAnim = false, useWaterAnim = false;
 		
 		public void Init(Game game) {
 			this.game = game;
@@ -36,6 +36,7 @@ namespace ClassicalSharp.Textures {
 		void TexturePackChanged(object sender, EventArgs e) {
 			Clear();
 			useLavaAnim = IsDefaultZip();
+			useWaterAnim = useLavaAnim;
 		}
 		
 		void TextureChanged(object sender, TextureEventArgs e) {
@@ -48,14 +49,20 @@ namespace ClassicalSharp.Textures {
 				ReadAnimationsDescription(reader);
 			} else if (e.Name == "uselavaanim") {
 				useLavaAnim = true;
+			} else if (e.Name == "usewateranim") {
+				useWaterAnim = true;
 			}
 		}
 		
 		/// <summary> Runs through all animations and if necessary updates the terrain atlas. </summary>
-		public unsafe void Tick(ScheduledTask task) {
+		public void Tick(ScheduledTask task) {
 			if (useLavaAnim) {
-				int size = Math.Min(game.TerrainAtlas.elementSize, 64);
+				int size = Math.Min(game.TerrainAtlas.TileSize, 64);
 				DrawAnimation(null, 30, size);
+			}			
+			if (useWaterAnim) {
+				int size = Math.Min(game.TerrainAtlas.TileSize, 64);
+				DrawAnimation(null, 14, size);
 			}
 			
 			if (animations.Count == 0) return;			
@@ -122,6 +129,7 @@ namespace ClassicalSharp.Textures {
 		
 		FastBitmap animPart = new FastBitmap();
 		LavaAnimation lavaAnim = new LavaAnimation();
+		WaterAnimation waterAnim = new WaterAnimation();
 		unsafe void ApplyAnimation(AnimationData data) {
 			data.Tick--;
 			if (data.Tick >= 0) return;
@@ -131,23 +139,40 @@ namespace ClassicalSharp.Textures {
 			
 			int texId = (data.TileY << 4) | data.TileX;
 			if (texId == 30 && useLavaAnim) return;
+			if (texId == 14 && useWaterAnim) return;
 			DrawAnimation(data, texId, data.FrameSize);
 		}
 		
 		unsafe void DrawAnimation(AnimationData data, int texId, int size) {
+			if (size <= 128) {
+				byte* temp = stackalloc byte[size * size * 4];
+				DrawAnimationCore(data, texId, size, temp);
+			} else {
+				// cannot allocate memory on the stack for very big animation.png frames
+				byte[] temp = new byte[size * size * 4];
+				fixed (byte* ptr = temp) {
+					DrawAnimationCore(data, texId, size, ptr);
+				}
+			}
+		}
+		
+		unsafe void DrawAnimationCore(AnimationData data, int texId, int size, byte* temp) {
 			TerrainAtlas1D atlas = game.TerrainAtlas1D;			
 			int index = atlas.Get1DIndex(texId);
-			int rowNum = atlas.Get1DRowId(texId);			
-			byte* temp = stackalloc byte[size * size * 4];
+			int rowNum = atlas.Get1DRowId(texId);						
 			animPart.SetData(size, size, size * 4, (IntPtr)temp, false);
 			
 			if (data == null) {
-				lavaAnim.Tick((int*)temp, size);
+				if (texId == 30) {
+					lavaAnim.Tick((int*)temp, size);
+				} else if (texId == 14) {
+					waterAnim.Tick((int*)temp, size);
+				}
 			} else {
 				FastBitmap.MovePortion(data.FrameX + data.State * size, 
 				                       data.FrameY, 0, 0, animsBuffer, animPart, size);
 			}
-			gfx.UpdateTexturePart(atlas.TexIds[index], 0, rowNum * game.TerrainAtlas.elementSize, animPart);
+			gfx.UpdateTexturePart(atlas.TexIds[index], 0, rowNum * game.TerrainAtlas.TileSize, animPart, game.Graphics.Mipmaps);
 		}
 		
 		bool IsDefaultZip() {

@@ -2,7 +2,9 @@
 using System;
 using System.Drawing;
 using System.Globalization;
+#if !LAUNCHER
 using ClassicalSharp.Model;
+#endif
 using OpenTK;
 using OpenTK.Input;
 #if ANDROID
@@ -12,17 +14,12 @@ using AndroidColor = Android.Graphics.Color;
 
 namespace ClassicalSharp {
 
-	// NOTE: These delegates should be removed when using versions later than NET 2.0.
+	// NOTE: This delegate should be removed when using versions later than NET 2.0.
 	// ################################################################
 	public delegate void Action();
-	public delegate void Action<T1, T2>(T1 arg1, T2 arg2);
-	public delegate void Action<T1, T2, T3>(T1 arg1, T2 arg2, T3 arg3);
-	public delegate void Action<T1, T2, T3, T4>(T1 arg1, T2 arg2, T3 arg3, T4 arg4);
-	public delegate TResult Func<TResult>();
-	public delegate TResult Func<T1, TResult>(T1 arg1);
-	public delegate TResult Func<T1, T2, TResult>(T1 arg1, T2 arg2);
-	public delegate TResult Func<T1, T2, T3, TResult>(T1 arg1, T2 arg2, T3 arg3);
 	// ################################################################
+	
+	public enum Anchor { LeftOrTop, Centre, BottomOrRight, }
 	
 	public static partial class Utils {
 		
@@ -44,8 +41,8 @@ namespace ClassicalSharp {
 			}
 			return new String(output, 0, usedChars);
 		}
-		
-		/// <summary> Returns a string with a + removed if it is the last character in the string. </summary>
+
+#if !LAUNCHER		
 		public static string RemoveEndPlus(string value) {
 			// Workaround for MCDzienny (and others) use a '+' at the end to distinguish classicube.net accounts
 			// from minecraft.net accounts. Unfortunately they also send this ending + to the client.
@@ -54,15 +51,11 @@ namespace ClassicalSharp {
 			return value[value.Length - 1] == '+' ?
 				value.Substring(0, value.Length - 1) : value;
 		}
+#endif
 		
 		const StringComparison comp = StringComparison.OrdinalIgnoreCase;
-		/// <summary> Returns whether a equals b, ignoring any case differences. </summary>
 		public static bool CaselessEquals(string a, string b) { return a.Equals(b, comp); }
-		
-		/// <summary> Returns whether a starts with b, ignoring any case differences. </summary>
 		public static bool CaselessStarts(string a, string b) { return a.StartsWith(b, comp); }
-		
-		/// <summary> Returns whether a ends with b, ignoring any case differences. </summary>
 		public static bool CaselessEnds(string a, string b) { return a.EndsWith(b, comp); }
 		
 		/// <summary> Converts the given byte array of length N to a hex string of length 2N. </summary>
@@ -102,8 +95,26 @@ namespace ClassicalSharp {
 				return false;
 			}
 			return true;
+		}		
+				
+		public static void LogDebug(string text) {
+			try { Console.WriteLine(text); } catch { }
+		}
+		
+		public static void LogDebug(string text, params object[] args) {
+			try { Console.WriteLine(String.Format(text, args)); } catch { }
+		}
+		
+		public static int AccumulateWheelDelta(ref float accmulator, float delta) {
+			// Some mice may use deltas of say (0.2, 0.2, 0.2, 0.2, 0.2)
+			// We must use rounding at final step, not at every intermediate step.
+			accmulator += delta;
+			int steps = (int)accmulator;
+			accmulator -= steps;
+			return steps;
 		}
 
+#if !LAUNCHER
 		/// <summary> Attempts to caselessly parse the given string as a Key enum member,
 		/// returning defValue if there was an error parsing. </summary>
 		public static bool TryParseEnum<T>(string value, T defValue, out T result) {
@@ -117,15 +128,7 @@ namespace ClassicalSharp {
 			result = mapping;
 			return true;
 		}
-		
-		public static void LogDebug(string text) {
-			Console.WriteLine(text);
-		}
-		
-		public static void LogDebug(string text, params object[] args) {
-			Console.WriteLine(String.Format(text, args));
-		}
-		
+	
 		public static int AdjViewDist(float value) {
 			return (int)(1.4142135 * value);
 		}
@@ -135,16 +138,12 @@ namespace ClassicalSharp {
 			return CeilDiv(axis1Len, axisSize) * CeilDiv(axis2Len, axisSize) * 4;
 		}
 		
-		public static byte FastByte(string s) {
-			int sum = 0;
-			switch (s.Length) {
-				case 1: sum = (s[0] - '0'); break;
-				case 2: sum = (s[0] - '0') * 10 + (s[1] - '0'); break;
-				case 3: sum = (s[0] - '0') * 100 + (s[1] - '0') * 10 + (s[2] - '0'); break;
-			}
-			return (byte)sum;
+		public static int Tint(int col, FastColour tint) {
+			FastColour adjCol = FastColour.Unpack(col);
+			adjCol *= tint;
+			return adjCol.Pack();
 		}
-		
+	
 		/// <summary> Determines the skin type of the specified bitmap. </summary>
 		public static SkinType GetSkinType(Bitmap bmp) {
 			if (bmp.Width == bmp.Height * 2) {
@@ -169,22 +168,38 @@ namespace ClassicalSharp {
 			int https = value.IndexOf("https://", index);
 			return http == index || https == index;
 		}
-		
+#endif
+
 		/// <summary> Conversion for code page 437 characters from index 0 to 31 to unicode. </summary>
-		public const string ControlCharReplacements = "\0☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼";
+		const string ControlCharReplacements = "\0☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼";
 		
 		/// <summary> Conversion for code page 437 characters from index 127 to 255 to unicode. </summary>
-		public const string ExtendedCharReplacements = "⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»" +
+		const string ExtendedCharReplacements = "⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»" +
 			"░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌" +
 			"█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u00a0";
 
-		public static bool IsValidInputChar(char c, Game game) {
-			if (c >= ' ' && c <= '~') return true; // ascii
+		public static bool IsValidInputChar(char c, bool supportsCP437) {
+			if (c == '?') return true;
+			byte cp437 = UnicodeToCP437(c);
+			if (cp437 == '?') return false; // not code page 437
 			
-			bool isCP437 = Utils.ControlCharReplacements.IndexOf(c) >= 0 ||
-				Utils.ExtendedCharReplacements.IndexOf(c) >= 0;
-			bool supportsCP437 = game.Server.SupportsFullCP437;
-			return supportsCP437 && isCP437;
+			return supportsCP437 || (cp437 == c);
+		}
+
+		public static byte UnicodeToCP437(char c) {
+			if (c >= ' ' && c <= '~') return (byte)c;
+			
+			int cIndex = ControlCharReplacements.IndexOf(c);
+			if (cIndex >= 0) return (byte)cIndex;
+			int eIndex = ExtendedCharReplacements.IndexOf(c);
+			if (eIndex >= 0) return (byte)(127 + eIndex);
+			return (byte)'?';
+		}
+		
+		public static char CP437ToUnicode(byte c) {
+			if (c < 0x20) return ControlCharReplacements[c];
+			if (c < 0x7F) return (char)c;
+			return ExtendedCharReplacements[c - 0x7F];
 		}
 		
 		public unsafe static string ToLower(string value) {
@@ -197,7 +212,8 @@ namespace ClassicalSharp {
 			}
 			return value;
 		}
-		
+
+#if !LAUNCHER
 		// Not all languages use . as their decimal point separator
 		public static bool TryParseDecimal(string s, out float result) {
 			if (s.IndexOf(',') >= 0) 
@@ -219,5 +235,23 @@ namespace ClassicalSharp {
 		
 		const NumberStyles style = NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite
 			| NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint;
+		
+#endif
+
+		#if USE16_BIT
+		public static ushort[] UInt8sToUInt16s(byte[] src) {
+			ushort[] dst = new ushort[src.Length];
+			for (int i = 0; i < dst.Length; i++)
+				dst[i] = src[i];
+			return dst;
+		}
+		
+		public static byte[] UInt16sToUInt8s(ushort[] src) {
+			byte[] dst = new byte[src.Length];
+			for (int i = 0; i < dst.Length; i++)
+				dst[i] = (byte)src[i];
+			return dst;
+		}
+		#endif
 	}
 }

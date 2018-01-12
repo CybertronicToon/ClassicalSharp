@@ -2,6 +2,7 @@
 using System;
 using ClassicalSharp.Events;
 using ClassicalSharp.GraphicsAPI;
+using ClassicalSharp.Map;
 using OpenTK;
 
 namespace ClassicalSharp.Renderers {
@@ -13,7 +14,7 @@ namespace ClassicalSharp.Renderers {
 		const int count = 6 * 4;
 		
 		public bool ShouldRender {
-			get { return tex > 0 && !(game.EnvRenderer is MinimalEnvRenderer); }
+			get { return tex > 0 && !(game.EnvRenderer.minimal); }
 		}
 		
 		public void Init(Game game) {
@@ -21,7 +22,6 @@ namespace ClassicalSharp.Renderers {
 			game.Events.TextureChanged += TextureChanged;
 			game.Events.TexturePackChanged += TexturePackChanged;
 			game.WorldEvents.EnvVariableChanged += EnvVariableChanged;
-			game.WorldEvents.OnNewMap += OnNewMap;
 			game.Graphics.ContextLost += ContextLost;
 			game.Graphics.ContextRecreated += ContextRecreated;
 			ContextRecreated();
@@ -29,7 +29,7 @@ namespace ClassicalSharp.Renderers {
 		
 		public void Reset(Game game) { game.Graphics.DeleteTexture(ref tex); }
 		public void Ready(Game game) { }
-		public void OnNewMap(Game game) { }
+		public void OnNewMap(Game game) { MakeVb(); }
 		public void OnNewMapLoaded(Game game) { }
 		
 		public void Dispose() {
@@ -39,12 +39,9 @@ namespace ClassicalSharp.Renderers {
 			game.Events.TextureChanged -= TextureChanged;
 			game.Events.TexturePackChanged -= TexturePackChanged;
 			game.WorldEvents.EnvVariableChanged -= EnvVariableChanged;
-			game.WorldEvents.OnNewMap -= OnNewMap;
 			game.Graphics.ContextLost -= ContextLost;
 			game.Graphics.ContextRecreated -= ContextRecreated;			
 		}
-
-		void OnNewMap(object sender, EventArgs e) { MakeVb(); }
 		
 		void EnvVariableChanged(object sender, EnvVarEventArgs e) {
 			if (e.Var != EnvVar.CloudsColour) return;
@@ -53,11 +50,15 @@ namespace ClassicalSharp.Renderers {
 		
 		void TexturePackChanged(object sender, EventArgs e) {
 			game.Graphics.DeleteTexture(ref tex);
+			game.World.Env.SkyboxClouds = false;
 		}
 		
 		void TextureChanged(object sender, TextureEventArgs e) {
-			if (e.Name == "skybox.png")
+			if (e.Name == "skybox.png") {
 				game.UpdateTexture(ref tex, e.Name, e.Data, false);
+			} else if (e.Name == "useclouds") {
+				game.World.Env.SkyboxClouds = true;
+			}
 		}
 		
 		public void Render(double deltaTime) {
@@ -67,19 +68,30 @@ namespace ClassicalSharp.Renderers {
 			game.Graphics.BindTexture(tex);
 			game.Graphics.SetBatchFormat(VertexFormat.P3fT2fC4b);
 			
-			Vector3 pos = game.CurrentCameraPos;
-			Matrix4 m = Matrix4.Identity;
-			Vector2 rotation = game.Camera.GetCameraOrientation();
-			m *= Matrix4.RotateY(rotation.X); // yaw
-			m *= Matrix4.RotateX(rotation.Y); // pitch
-			m = m * game.Camera.tiltM;
-			game.Graphics.LoadMatrix(ref m);
+			Matrix4 m = Matrix4.Identity, rotY, rotX;			
 			
+			// Base skybox rotation
+			float rotTime = (float)(game.accumulator * 2 * Math.PI); // So speed of 1 rotates whole skybox every second
+			WorldEnv env = game.World.Env;
+			Matrix4.RotateY(out rotY, env.SkyboxHorSpeed * rotTime);
+			Matrix4.Mult(out m, ref m, ref rotY);
+			Matrix4.RotateX(out rotX, env.SkyboxVerSpeed * rotTime);
+			Matrix4.Mult(out m, ref m, ref rotX);
+			
+			// Rotate around camera
+			Vector2 rotation = game.Camera.GetCameraOrientation();
+			Matrix4.RotateY(out rotY, rotation.X); // Camera yaw
+			Matrix4.Mult(out m, ref m, ref rotY);
+			Matrix4.RotateX(out rotX, rotation.Y); // Cammera pitch
+			Matrix4.Mult(out m, ref m, ref rotX);
+			Matrix4.Mult(out m, ref m, ref game.Camera.tiltM);
+			
+			game.Graphics.LoadMatrix(ref m);			
 			game.Graphics.BindVb(vb);
-			game.Graphics.DrawIndexedVb(DrawMode.Triangles, count * 6 / 4, 0);
+			game.Graphics.DrawVb_IndexedTris(count);
 			
 			game.Graphics.Texturing = false;
-			game.Graphics.LoadMatrix(ref game.View);
+			game.Graphics.LoadMatrix(ref game.Graphics.View);
 			game.Graphics.DepthWrite = true;
 		}
 		
@@ -89,49 +101,55 @@ namespace ClassicalSharp.Renderers {
 		
 		unsafe void MakeVb() {
 			if (game.Graphics.LostContext) return;
-			game.Graphics.DeleteVb(ref vb);			
+			game.Graphics.DeleteVb(ref vb);
 			VertexP3fT2fC4b* vertices = stackalloc VertexP3fT2fC4b[count];
 			IntPtr start = (IntPtr)vertices;
-			const float pos = 0.5f;
-			TextureRec rec;
-			int col = game.World.Env.CloudsCol.Pack();
+			
+			const float pos = 1.0f;
+			VertexP3fT2fC4b v; v.Colour = game.World.Env.CloudsCol.Pack();
 			
 			// Render the front quad
-			rec = new TextureRec(1/4f, 1/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b( pos, -pos, -pos, rec.U1, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos, -pos, -pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos,  pos, -pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos, -pos, rec.U1, rec.V1, col); vertices++;
+			                        v.Z = -pos;
+			v.X =  pos; v.Y = -pos;             v.U = 0.25f; v.V = 1.00f; *vertices = v; vertices++;
+			v.X = -pos;                         v.U = 0.50f;              *vertices = v; vertices++;
+			            v.Y =  pos;                          v.V = 0.50f; *vertices = v; vertices++;
+			v.X =  pos;                         v.U = 0.25f;              *vertices = v; vertices++;
+			
 			// Render the left quad
-			rec = new TextureRec(0/4f, 1/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b( pos, -pos,  pos, rec.U1, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos, -pos, -pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos, -pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos,  pos, rec.U1, rec.V1, col); vertices++;
+			v.X =  pos;
+			            v.Y = -pos; v.Z =  pos; v.U = 0.00f; v.V = 1.00f; *vertices = v; vertices++;
+			                        v.Z = -pos; v.U = 0.25f;              *vertices = v; vertices++;
+			            v.Y =  pos;                          v.V = 0.50f; *vertices = v; vertices++;
+			                        v.Z =  pos; v.U = 0.00f;              *vertices = v; vertices++;
+			
 			// Render the back quad
-			rec = new TextureRec(3/4f, 1/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b(-pos, -pos,  pos, rec.U1, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos, -pos,  pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos,  pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos,  pos,  pos, rec.U1, rec.V1, col); vertices++;
+			                        v.Z =  pos;
+			v.X = -pos; v.Y = -pos;             v.U = 0.75f; v.V = 1.00f; *vertices = v; vertices++;
+			v.X =  pos;                         v.U = 1.00f;              *vertices = v; vertices++;
+			            v.Y =  pos;                          v.V = 0.50f; *vertices = v; vertices++;
+			v.X = -pos;                         v.U = 0.75f;              *vertices = v; vertices++;
+			
 			// Render the right quad
-			rec = new TextureRec(2/4f, 1/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b(-pos, -pos, -pos, rec.U1, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos, -pos,  pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos,  pos,  pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos,  pos, -pos, rec.U1, rec.V1, col); vertices++;
+			v.X = -pos;
+			            v.Y = -pos; v.Z = -pos; v.U = 0.50f; v.V = 1.00f; *vertices = v; vertices++;
+			                        v.Z =  pos; v.U = 0.75f;              *vertices = v; vertices++;
+			            v.Y =  pos;                          v.V = 0.50f; *vertices = v; vertices++;
+			                        v.Z = -pos; v.U = 0.50f;              *vertices = v; vertices++;
+			
 			// Render the top quad
-			rec = new TextureRec(1/4f, 0/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b(-pos,  pos, -pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos,  pos,  pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos,  pos, rec.U1, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos,  pos, -pos, rec.U1, rec.V2, col); vertices++;
+			            v.Y =  pos;
+			v.X = -pos;             v.Z = -pos;                           *vertices = v; vertices++;
+			                        v.Z =  pos;              v.V = 0.00f; *vertices = v; vertices++;
+			v.X =  pos;                         v.U = 0.25f;              *vertices = v; vertices++;
+			                        v.Z = -pos;              v.V = 0.50f; *vertices = v; vertices++;
+			
 			// Render the bottom quad
-			rec = new TextureRec(2/4f, 0/2f, 1/4f, 1/2f);
-			*vertices = new VertexP3fT2fC4b(-pos, -pos, -pos, rec.U2, rec.V2, col); vertices++;
-			*vertices = new VertexP3fT2fC4b(-pos, -pos,  pos, rec.U2, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos, -pos,  pos, rec.U1, rec.V1, col); vertices++;
-			*vertices = new VertexP3fT2fC4b( pos, -pos, -pos, rec.U1, rec.V2, col); vertices++;
+			            v.Y = -pos;
+			v.X = -pos;             v.Z = -pos; v.U = 0.75f;              *vertices = v; vertices++;
+			                        v.Z =  pos;              v.V = 0.00f; *vertices = v; vertices++;
+			v.X =  pos;                         v.U = 0.50f;              *vertices = v; vertices++;
+			                        v.Z = -pos;              v.V = 0.50f; *vertices = v; vertices++;
+			
 			vb = game.Graphics.CreateVb(start, VertexFormat.P3fT2fC4b, count);
 		}
 	}

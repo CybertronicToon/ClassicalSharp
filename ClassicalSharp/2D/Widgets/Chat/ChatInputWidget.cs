@@ -11,37 +11,18 @@ using Android.Graphics;
 namespace ClassicalSharp.Gui.Widgets {
 	public sealed class ChatInputWidget : InputWidget {
 
-		public ChatInputWidget(Game game, Font font) : base(game, font) {
+		public ChatInputWidget(Game game, Font font) : base(game, font, "> ", 3) {
 			typingLogPos = game.Chat.InputLog.Count; // Index of newest entry + 1.
 			ShowCaret = true;
+			Padding = 5;
 		}
 
 		static FastColour backColour = new FastColour(0, 0, 0, 127);
 		int typingLogPos;
 		string originalText;
-		bool shownWarning;
 		
-		public override int MaxLines { get { return game.ClassicMode ? 1 : 3; } }
-		public override string Prefix { get { return "> "; } }
-		public override int Padding { get { return 5; } }
-		public override int MaxCharsPerLine {
-			get {
-				bool allChars = game.ClassicMode || game.Server.SupportsPartialMessages;
-				return allChars ? 64 : 62; // need 2 chars for colour in multilined chat, when server doesn't support partial messages
-			}
-		}
-		
-		public override void Init() {
-			base.Init();
-			bool supports = game.Server.SupportsPartialMessages;
-			
-			if (Text.Length > MaxCharsPerLine && !shownWarning && !supports) {
-				game.Chat.Add("&eNote: On this server, each line will be sent separately.", MessageType.ClientStatus6);
-				shownWarning = true;
-			} else if (Text.Length <= MaxCharsPerLine && shownWarning) {
-				game.Chat.Add(null, MessageType.ClientStatus6);
-				shownWarning = false;
-			}
+		public override int UsedLines {
+			get { return !game.ClassicMode && game.Server.SupportsPartialMessages ? 3 : 1; }
 		}
 		
 		public override void Render(double delta) {
@@ -50,8 +31,8 @@ namespace ClassicalSharp.Gui.Widgets {
 			
 			for (int i = 0; i < lineSizes.Length; i++) {
 				if (i > 0 && lineSizes[i].Height == 0) break;
-				bool caretAtEnd = (caretRow == i) && (caretCol == MaxCharsPerLine || caret == -1);
-				int drawWidth = lineSizes[i].Width + (caretAtEnd ? caretTex.Width : 0);
+				bool caretAtEnd = (caretY == i) && (caretX == MaxCharsPerLine || caret == -1);
+				int drawWidth = lineSizes[i].Width + (caretAtEnd ? (int)caretTex.Width : 0);
 				// Cover whole window width to match original classic behaviour
 				if (game.PureClassic)
 					drawWidth = Math.Max(drawWidth, game.Width - X * 4);
@@ -67,65 +48,27 @@ namespace ClassicalSharp.Gui.Widgets {
 
 		
 		public override void EnterInput() {
-			SendChat();
+			if (!Text.Empty) {
+				// Don't want trailing spaces in output message
+				string text = new String(Text.value, 0, Text.TextLength);
+				game.Chat.Send(text);
+			}
+			
 			originalText = null;
 			typingLogPos = game.Chat.InputLog.Count; // Index of newest entry + 1.
 			
-			game.Chat.Add(null, MessageType.ClientStatus4);
-			game.Chat.Add(null, MessageType.ClientStatus5);
-			game.Chat.Add(null, MessageType.ClientStatus6);
+			game.Chat.Add(null, MessageType.ClientStatus2);
+			game.Chat.Add(null, MessageType.ClientStatus3);
 			base.EnterInput();
 		}
 		
-		
-		void SendChat() {
-			if (Text.Empty) return;
-			// Don't want trailing spaces in output message
-			string allText = new String(Text.value, 0, Text.TextLength);
-			game.Chat.InputLog.Add(allText);
-			
-			if (game.Server.SupportsPartialMessages) {
-				SendWithPartial(allText);
-			} else {
-				SendNormal();
-			}
-		}
-		
-		void SendWithPartial(string allText) {
-			// don't automatically word wrap the message.
-			while (allText.Length > Utils.StringLength) {
-				game.Chat.Send(allText.Substring(0, Utils.StringLength), true);
-				allText = allText.Substring(Utils.StringLength);
-			}
-			game.Chat.Send(allText, false);
-		}
-		
-		void SendNormal() {
-			int packetsCount = 0;
-			for (int i = 0; i < lines.Length; i++) {
-				if (lines[i] == null) break;
-				packetsCount++;
-			}
-			
-			// split up into both partial and final packet.
-			for (int i = 0; i < packetsCount - 1; i++)
-				SendNormalText(i, true);
-			SendNormalText(packetsCount - 1, false);
-		}
-		
-		void SendNormalText(int i, bool partial) {
-			string text = lines[i];
-			char lastCol = GetLastColour(0, i);
-			if (!IDrawer2D.IsWhiteColour(lastCol))
-				text = "&" + lastCol + text;
-			game.Chat.Send(text, partial);
-		}
-		
-		
 		#region Input handling
 		
+		public override bool HandlesKeyPress(char key) {
+			Append(key); return true;
+		}
+		
 		public override bool HandlesKeyDown(Key key) {
-			if (game.HideGui) return key < Key.F1 || key > Key.F35;
 			bool controlDown = ControlDown();
 			
 			if (key == Key.Tab) { TabKey(); return true; }
@@ -160,7 +103,7 @@ namespace ClassicalSharp.Gui.Widgets {
 		
 		void DownKey(bool controlDown) {
 			if (controlDown) {
-				if (caret == -1 || caret >= (lines.Length - 1) * MaxCharsPerLine) return;
+				if (caret == -1 || caret >= (UsedLines - 1) * MaxCharsPerLine) return;
 				caret += MaxCharsPerLine;
 				UpdateCaret();
 				return;
@@ -193,16 +136,13 @@ namespace ClassicalSharp.Gui.Widgets {
 			
 			string part = new String(value, start, pos + 1 - start);
 			List<string> matches = new List<string>();
-			game.Chat.Add(null, MessageType.ClientStatus5);
+			game.Chat.Add(null, MessageType.ClientStatus3);
 			
-			TabListEntry[] entries = game.TabList.Entries;
+			TabListEntry[] entries = TabList.Entries;
 			for (int i = 0; i < EntityList.MaxCount; i++) {
-				if (entries[i] == null) continue;
-				
-				string rawName = entries[i].PlayerName;
-				string name = Utils.StripColours(rawName);
-				if (name.StartsWith(part, StringComparison.OrdinalIgnoreCase))
-					matches.Add(name);
+				if (entries[i] == null) continue;				
+				string name = entries[i].PlayerName;
+				if (Utils.CaselessStarts(name, part)) matches.Add(name);
 			}
 			
 			if (matches.Count == 1) {
@@ -225,7 +165,7 @@ namespace ClassicalSharp.Gui.Widgets {
 					sb.Append(ref index, match);
 					sb.Append(ref index, ' ');
 				}
-				game.Chat.Add(sb.ToString(), MessageType.ClientStatus5);
+				game.Chat.Add(sb.ToString(), MessageType.ClientStatus3);
 			}
 		}
 		

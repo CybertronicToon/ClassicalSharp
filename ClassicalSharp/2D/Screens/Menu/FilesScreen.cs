@@ -8,9 +8,10 @@ namespace ClassicalSharp.Gui.Screens {
 	public abstract class FilesScreen : ClickableScreen {
 		
 		public FilesScreen(Game game) : base(game) {
+			HandlesAllInput = true;
 		}
 		
-		protected Font textFont, arrowFont, titleFont;
+		protected Font font;
 		protected string[] entries;
 		protected int currentIndex;
 		protected ButtonWidget[] buttons;
@@ -20,47 +21,56 @@ namespace ClassicalSharp.Gui.Screens {
 		protected string titleText;
 		
 		public override void Init() {
-			textFont = new Font(game.FontName, 16, FontStyle.Bold);
-			arrowFont = new Font(game.FontName, 18, FontStyle.Bold);
-			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			title = TextWidget.Create(game, titleText, titleFont)
+			font = new Font(game.FontName, 16, FontStyle.Bold);
+			ContextRecreated();
+			gfx.ContextLost += ContextLost;
+			gfx.ContextRecreated += ContextRecreated;
+		}
+		
+		protected override void ContextLost() {
+			DisposeWidgets(buttons);
+			title.Dispose();
+		}
+		
+		protected override void ContextRecreated() {
+			title = TextWidget.Create(game, titleText, font)
 				.SetLocation(Anchor.Centre, Anchor.Centre, 0, -155);
 			
 			buttons = new ButtonWidget[] {
 				MakeText(0, -100, Get(0)),
 				MakeText(0, -50, Get(1)),
-				MakeText(0, 0, Get(2)),
+				MakeText(0,   0, Get(2)),
 				MakeText(0, 50, Get(3)),
 				MakeText(0, 100, Get(4)),
 				
-				Make(-220, 0, "<", (g, w) => PageClick(false)),
-				Make(220, 0, ">", (g, w) => PageClick(true)),
-				MakeBack(false, titleFont, 
-				         (g, w) => g.Gui.SetNewScreen(new PauseScreen(g))),
+				Make(-220, 0, "<", MoveBackwards),
+				Make(220, 0, ">", MoveForwards),
+				MakeBack(false, font, SwitchPause),
 			};
 			UpdateArrows();
 		}
+		
+		void MoveBackwards(Game g, Widget w) { PageClick(false); }
+		void MoveForwards(Game g, Widget w) { PageClick(true); }
 		
 		string Get(int index) {
 			return index < entries.Length ? entries[index] : "-----";
 		}
 		
 		public override void Dispose() {
-			for (int i = 0; i < buttons.Length; i++)
-				buttons[i].Dispose();
-			textFont.Dispose();
-			arrowFont.Dispose();
-			title.Dispose();
-			titleFont.Dispose();
+			font.Dispose();
+			ContextLost();
+			gfx.ContextLost -= ContextLost;
+			gfx.ContextRecreated -= ContextRecreated;
 		}
 		
 		ButtonWidget MakeText(int x, int y, string text) {
-			return ButtonWidget.Create(game, 301, 40, text, textFont, TextButtonClick)
+			return ButtonWidget.Create(game, 300, text, font, TextButtonClick)
 				.SetLocation(Anchor.Centre, Anchor.Centre, x, y);
 		}
 		
-		ButtonWidget Make(int x, int y, string text, Action<Game, Widget> onClick) {
-			return ButtonWidget.Create(game, 41, 40, text, arrowFont, LeftOnly(onClick))
+		ButtonWidget Make(int x, int y, string text, SimpleClickHandler onClick) {
+			return ButtonWidget.Create(game, 40, text, font, LeftOnly(onClick))
 				.SetLocation(Anchor.Centre, Anchor.Centre, x, y);
 		}
 		
@@ -70,7 +80,7 @@ namespace ClassicalSharp.Gui.Screens {
 			SetCurrentIndex(currentIndex + (forward ? items : -items));
 		}
 		
-		protected void SetCurrentIndex(int index) {			
+		protected void SetCurrentIndex(int index) {
 			if (index >= entries.Length) index -= items;
 			if (index < 0) index = 0;
 			currentIndex = index;
@@ -110,20 +120,16 @@ namespace ClassicalSharp.Gui.Screens {
 			return HandleMouseClick(buttons, mouseX, mouseY, button);
 		}
 		
-		public override bool HandlesAllInput { get { return true; } }
-		
 		public override void OnResize(int width, int height) {
-			for (int i = 0; i < buttons.Length; i++)
-				buttons[i].CalculatePosition();
-			title.CalculatePosition();
+			RepositionWidgets(buttons);
+			title.Reposition();
 		}
 		
 		public override void Render(double delta) {
-			gfx.Draw2DQuad(0, 0, game.Width, game.Height, new FastColour(60, 60, 60, 160));
+			RenderMenuBounds();
 			gfx.Texturing = true;
 			title.Render(delta);
-			for (int i = 0; i < buttons.Length; i++)
-				buttons[i].Render(delta);
+			RenderWidgets(buttons, delta);
 			gfx.Texturing = false;
 		}
 	}

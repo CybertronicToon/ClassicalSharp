@@ -3,7 +3,7 @@
  * Contributions from Erik Ylvisaker
  * See license.txt for license info
  */
- #endregion
+#endregion
 
 using System;
 using System.Drawing;
@@ -16,6 +16,9 @@ namespace OpenTK.Platform.Windows {
 	
 	internal static class API {
 		
+		[DllImport("shell32.dll")]
+        public static extern int SetCurrentProcessExplicitAppUserModelID([MarshalAs(UnmanagedType.LPWStr)] string AppID);
+		
 		[DllImport("user32.dll"), SuppressUnmanagedCodeSecurity]
 		internal static extern bool SetWindowPos(IntPtr handle, IntPtr insertAfter, int x, int y, int cx, int cy, SetWindowPosFlags flags);
 		
@@ -27,10 +30,10 @@ namespace OpenTK.Platform.Windows {
 
 		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
 		internal static extern IntPtr CreateWindowEx(ExtendedWindowStyle ExStyle, IntPtr ClassAtom, IntPtr WindowName, WindowStyle Style,
-			int X, int Y, int Width, int Height, IntPtr HandleToParentWindow, IntPtr Menu, IntPtr Instance, IntPtr Param);
+		                                             int X, int Y, int Width, int Height, IntPtr HandleToParentWindow, IntPtr Menu, IntPtr Instance, IntPtr Param);
 		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
-		internal static extern bool DestroyWindow(IntPtr windowHandle);	
+		internal static extern bool DestroyWindow(IntPtr windowHandle);
 		
 		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
 		internal static extern ushort RegisterClassEx(ref ExtendedWindowClass window_class);
@@ -80,6 +83,7 @@ namespace OpenTK.Platform.Windows {
 		[DllImport("User32.dll", CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
 		public extern static IntPtr DefWindowProc(IntPtr hWnd, WindowMessage msg, IntPtr wParam, IntPtr lParam);
 		
+		
 		[DllImport("user32.dll"), SuppressUnmanagedCodeSecurity]
 		internal static extern IntPtr GetDC(IntPtr hwnd);
 
@@ -97,6 +101,7 @@ namespace OpenTK.Platform.Windows {
 		
 		[DllImport("gdi32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		internal static extern bool SwapBuffers(IntPtr dc);
+		
 
 		[DllImport("kernel32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		internal static extern IntPtr LoadLibrary(string dllName);
@@ -105,17 +110,8 @@ namespace OpenTK.Platform.Windows {
 		internal static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
 
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
-		internal static extern uint MapVirtualKey(VirtualKeys vkey, MapVirtualKeyType uMapType);
+		internal static extern bool ShowWindow(IntPtr hWnd, ShowWindowCommand nCmdShow);
 
-		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
-		internal static extern bool ShowWindow(IntPtr hWnd, ShowWindowCommand nCmdShow);		
-		
-		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
-		internal static extern bool SetWindowText(IntPtr hWnd, [MarshalAs(UnmanagedType.LPTStr)] string lpString);
-		
-		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
-		internal static extern int GetWindowText(IntPtr hWnd, [MarshalAs(UnmanagedType.LPTStr), In, Out] StringBuilder lpString, int nMaxCount);
-		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		//internal static extern bool ScreenToClient(IntPtr hWnd, ref POINT point);
 		internal static extern bool ScreenToClient(IntPtr hWnd, ref Point point);
@@ -126,19 +122,12 @@ namespace OpenTK.Platform.Windows {
 		[DllImport("user32.dll"), SuppressUnmanagedCodeSecurity]
 		public static extern bool IsWindowVisible(IntPtr intPtr);
 
-		[DllImport("user32.dll"), SuppressUnmanagedCodeSecurity]
-		public static extern IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
-
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		public static extern bool SetForegroundWindow(IntPtr hWnd);
 
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		public static extern bool BringWindowToTop(IntPtr hWnd);
-
-		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
-		public static extern int ChangeDisplaySettingsEx([MarshalAs(UnmanagedType.LPTStr)] string lpszDeviceName,
-		                                                  DeviceMode lpDevMode, IntPtr hwnd, ChangeDisplaySettingsEnum dwflags, IntPtr lParam);
-
+		
 		[DllImport("user32.dll", SetLastError = true, CharSet=CharSet.Auto), SuppressUnmanagedCodeSecurity]
 		public static extern bool EnumDisplayDevices([MarshalAs(UnmanagedType.LPTStr)] string lpDevice,
 		                                             int iDevNum, [In, Out] WindowsDisplayDevice lpDisplayDevice, uint dwFlags);
@@ -146,12 +135,38 @@ namespace OpenTK.Platform.Windows {
 		[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto), SuppressUnmanagedCodeSecurity]
 		internal static extern bool EnumDisplaySettings([MarshalAs(UnmanagedType.LPTStr)] string device_name,
 		                                                int graphics_mode, [In, Out] DeviceMode device_mode);
-
+		
+		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
-		public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
-
+		public static extern bool OpenClipboard(IntPtr hWndNewOwner);
+		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
-		public static extern IntPtr MonitorFromWindow(IntPtr hwnd, MonitorFrom dwFlags);
+		public static extern bool EmptyClipboard();
+		
+		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
+		public static extern bool CloseClipboard();
+		
+		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
+		public static extern IntPtr GetClipboardData(uint uFormat);
+		
+		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]		
+		public static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+		
+		[DllImport("kernel32.dll"), SuppressUnmanagedCodeSecurity]
+		public static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+		
+		[DllImport("kernel32.dll"), SuppressUnmanagedCodeSecurity]
+		public static extern IntPtr GlobalFree(IntPtr hMem);
+		
+		[DllImport("kernel32.dll"), SuppressUnmanagedCodeSecurity]
+		public static extern IntPtr GlobalLock(IntPtr hMem);
+		
+		[DllImport("kernel32.dll"), SuppressUnmanagedCodeSecurity]
+		public static extern bool GlobalUnlock(IntPtr hMem);
+		
+
+		[DllImport("user32.dll"), SuppressUnmanagedCodeSecurity]
+		public static extern IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
 		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		public static extern bool TrackMouseEvent(ref TrackMouseEventStructure lpEventTrack);
@@ -167,6 +182,9 @@ namespace OpenTK.Platform.Windows {
 		
 		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
 		internal static extern ushort GetKeyState( int code );
+
+		[DllImport("user32.dll", SetLastError = true), SuppressUnmanagedCodeSecurity]
+		internal static extern uint MapVirtualKey(VirtualKeys vkey, MapVirtualKeyType uMapType);
 	}
 
 	internal struct Constants {
@@ -183,6 +201,7 @@ namespace OpenTK.Platform.Windows {
 		internal const int DISP_CHANGE_FAILED = -1;
 	}
 	
+	#pragma warning disable 0649
 	internal struct CreateStruct {
 		internal IntPtr lpCreateParams;
 		internal IntPtr hInstance;
@@ -204,6 +223,7 @@ namespace OpenTK.Platform.Windows {
 		public WindowStyle Old;
 		public WindowStyle New;
 	}
+	#pragma warning restore 0649
 	
 	[StructLayout(LayoutKind.Sequential)]
 	internal struct PixelFormatDescriptor {
@@ -316,7 +336,7 @@ namespace OpenTK.Platform.Windows {
 
 		internal static int SizeInBytes = Marshal.SizeOf(default(WindowClass));
 	}
-		
+	
 	[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
 	struct ExtendedWindowClass
 	{
@@ -389,10 +409,6 @@ namespace OpenTK.Platform.Windows {
 		internal int Width { get { return right - left; } }
 		internal int Height { get { return bottom - top; } }
 
-		public override string ToString() {
-			return String.Format("({0},{1})-({2},{3})", left, top, right, bottom);
-		}
-
 		internal Rectangle ToRectangle() {
 			return Rectangle.FromLTRB(left, top, right, bottom);
 		}
@@ -414,15 +430,6 @@ namespace OpenTK.Platform.Windows {
 			rect.bottom = value.Height;
 			return rect;
 		}
-	}
-
-	struct MonitorInfo {
-		public int Size;
-		public RECT Monitor;
-		public RECT Work;
-		public uint Flags;
-
-		public static readonly int SizeInBytes = Marshal.SizeOf(default(MonitorInfo));
 	}
 	
 	struct TrackMouseEventStructure {
@@ -534,7 +541,7 @@ namespace OpenTK.Platform.Windows {
 		DRAW_TO_WINDOW = 0x04,
 		SUPPORT_OPENGL = 0x20,
 		DEPTH_DONTCARE = 0x20000000,
-	}	
+	}
 	
 	internal enum PixelType : byte {
 		RGBA = 0,
@@ -650,11 +657,11 @@ namespace OpenTK.Platform.Windows {
 	}
 
 	enum MouseKeys {
-		None = 0x00, //No mouse button was pressed.		
-		Left = 0x01, // The left mouse button was pressed.	
-		Right = 0x02, // The right mouse button was pressed.		
-		Middle = 0x10, // The middle mouse button was pressed.		
-		XButton1 = 0x20, // The first XButton was pressed.		
+		None = 0x00, //No mouse button was pressed.
+		Left = 0x01, // The left mouse button was pressed.
+		Right = 0x02, // The right mouse button was pressed.
+		Middle = 0x10, // The middle mouse button was pressed.
+		XButton1 = 0x20, // The first XButton was pressed.
 		XButton2 = 0x40, // The second XButton was pressed.
 	}
 	
@@ -730,12 +737,6 @@ namespace OpenTK.Platform.Windows {
 		VirtualKeyToScanCodeExtended = 4,
 	}
 	
-	enum MonitorFrom {
-		Null = 0,
-		Primary = 1,
-		Nearest = 2,
-	}
-	
 	[Flags]
 	enum TrackMouseEventFlags : uint {
 		HOVER = 0x00000001,
@@ -755,10 +756,6 @@ namespace OpenTK.Platform.Windows {
 		internal IntPtr LParam;
 		internal uint Time;
 		internal POINT Point;
-
-		public override string ToString() {
-			return String.Format("msg=0x{0:x} ({1}) hwnd=0x{2:x} wparam=0x{3:x} lparam=0x{4:x} pt=0x{5:x}", (int)Message, Message.ToString(), HWnd.ToInt32(), WParam.ToInt32(), LParam.ToInt32(), Point);
-		}
 	}
 	
 	[StructLayout(LayoutKind.Sequential)]
@@ -773,10 +770,6 @@ namespace OpenTK.Platform.Windows {
 
 		internal Point ToPoint() {
 			return new Point(X, Y);
-		}
-
-		public override string ToString() {
-			return "Point {" + X.ToString() + ", " + Y.ToString() + ")";
 		}
 	}
 }

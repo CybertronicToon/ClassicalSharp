@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="2.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <ProjectGuid>{BEB1C785-5CAD-48FF-A886-876BF0A318D4}</ProjectGuid>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -78,22 +78,20 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="2D\Drawing\CanvasDrawer2D.cs" />
-    <Compile Include="2D\Drawing\CanvasDrawer2D.Text.cs" />
-    <Compile Include="2D\Drawing\GdiPlusDrawer2D.Text.cs" />
     <Compile Include="2D\Drawing\IDrawer2D.TextMC.cs" />
     <Compile Include="2D\GuiElement.cs" />
     <Compile Include="2D\IsometricBlockDrawer.cs" />
-    <Compile Include="2D\Drawing\DrawTextArgs.cs" />
     <Compile Include="2D\Drawing\GdiPlusDrawer2D.cs" />
     <Compile Include="2D\Drawing\IDrawer2D.cs" />
     <Compile Include="2D\Screens\ChatScreen.cs" />
     <Compile Include="2D\Screens\ClickableScreen.cs" />
     <Compile Include="2D\Screens\DeathScreen.cs" />
-    <Compile Include="2D\Screens\ErrorScreen.cs" />
-    <Compile Include="2D\Screens\FpsScreen.cs" />
-    <Compile Include="2D\Screens\Inventory\InventoryScreen.cs" />
-    <Compile Include="2D\Screens\Inventory\InventoryScreen.Input.cs" />
-    <Compile Include="2D\Screens\Inventory\InventoryScreen.Scrolling.cs" />
+    <Compile Include="2D\Screens\DisconnectScreen.cs" />
+    <Compile Include="2D\Screens\InventoryScreen.cs" />
+    <Compile Include="2D\Screens\Overlays\Overlay.cs" />
+    <Compile Include="2D\Screens\Overlays\TexIdsOverlay.cs" />
+    <Compile Include="2D\Screens\Overlays\WarningOverlay.cs" />
+    <Compile Include="2D\Screens\StatusScreen.cs" />
     <Compile Include="2D\Screens\LoadingMapScreen.cs" />
     <Compile Include="2D\Screens\MenuScreen.cs" />
     <Compile Include="2D\Screens\Menu\ClassicOptionsScreen.cs" />
@@ -117,26 +115,22 @@
     <Compile Include="2D\Screens\Menu\TexturePackScreen.cs" />
     <Compile Include="2D\Screens\HudScreen.cs" />
     <Compile Include="2D\Screens\Screen.cs" />
-    <Compile Include="2D\Screens\WarningScreen.cs" />
     <Compile Include="2D\Texture.cs" />
     <Compile Include="2D\Utils\FastBitmap.cs" />
     <Compile Include="2D\Utils\FastColour.cs" />
     <Compile Include="2D\Utils\TextAtlas.cs" />
     <Compile Include="2D\Widgets\HotbarWidget.cs" />
-    <Compile Include="2D\Widgets\Chat\AltTextInputWidget.Types.cs" />
     <Compile Include="2D\Widgets\Chat\ChatInputWidget.cs" />
-    <Compile Include="2D\Widgets\Chat\AltTextInputWidget.cs" />
+    <Compile Include="2D\Widgets\Chat\SpecialInputWidget.cs" />
     <Compile Include="2D\Widgets\Chat\TextGroupWidget.cs" />
-    <Compile Include="2D\Widgets\Chat\TextGroupWidget.Formatter.cs" />
     <Compile Include="2D\Widgets\InputWidget.cs" />
     <Compile Include="2D\Widgets\Menu\MenuInputValidator.cs" />
     <Compile Include="2D\Widgets\Menu\MenuInputWidget.cs" />
     <Compile Include="2D\Widgets\ButtonWidget.cs" />
-    <Compile Include="2D\Widgets\PlayerList\ClassicPlayerListWidget.cs" />
-    <Compile Include="2D\Widgets\PlayerList\ExtPlayerListWidget.cs" />
-    <Compile Include="2D\Widgets\PlayerList\NormalPlayerListWidget.cs" />
-    <Compile Include="2D\Widgets\PlayerList\PlayerListWidget.cs" />
+    <Compile Include="2D\Widgets\PlayerListWidget.cs" />
+    <Compile Include="2D\Widgets\ScrollbarWidget.cs" />
     <Compile Include="2D\Widgets\SurvivalHotbarWidget.cs" />
+    <Compile Include="2D\Widgets\TableWidget.cs" />
     <Compile Include="2D\Widgets\TextWidget.cs" />
     <Compile Include="2D\Widgets\Widget.cs" />
     <Compile Include="Audio\AudioPlayer.cs" />
@@ -149,22 +143,17 @@
     <Compile Include="Blocks\BlockInfo.Culling.cs" />
     <Compile Include="Blocks\BlockInfo.Atlas.cs" />
     <Compile Include="Blocks\DefaultSet.cs" />
-    <Compile Include="Commands\SinglePlayerCommands.cs" />
+    <Compile Include="Commands\Commands.cs" />
     <Compile Include="Entities\Components\IInterpComponent.cs" />
-    <Compile Include="Entities\Components\LocalInterpComponent.cs" />
-    <Compile Include="Entities\Mobs\AI\AI.cs" />
-    <Compile Include="Entities\Mobs\AI\FleeAI.cs" />
-    <Compile Include="Entities\Mobs\AI\HostileAI.cs" />
+    <Compile Include="Entities\Mobs\AI.cs" />
     <Compile Include="Entities\Components\AnimatedComponent.cs" />
     <Compile Include="Entities\Components\HacksComponent.cs" />
     <Compile Include="Entities\Components\InputComponent.cs" />
-    <Compile Include="Entities\Components\NetInterpComponent.cs" />
     <Compile Include="Entities\Components\CollisionsComponent.cs" />
     <Compile Include="Entities\Components\NewCollisionsComponent.cs" />
     <Compile Include="Entities\Components\PhysicsComponent.cs" />
     <Compile Include="Entities\Components\ShadowComponent.cs" />
     <Compile Include="Entities\Components\SoundComponent.cs" />
-    <Compile Include="Entities\Entity.Bounds.cs" />
     <Compile Include="Entities\Entity.cs" />
     <Compile Include="Entities\EntityList.cs" />
     <Compile Include="Entities\LocalPlayer.cs" />
@@ -191,6 +180,7 @@
     <Compile Include="Map\Formats\MapSchematic.Exporter.cs" />
     <Compile Include="Map\Formats\MapLvl.Importer.cs" />
     <Compile Include="Map\Formats\NbtFile.cs" />
+    <Compile Include="Map\Lighting\BasicLighting.Updater.cs" />
     <Compile Include="Map\Lighting\IWorldLighting.cs" />
     <Compile Include="Map\Lighting\BasicLighting.cs" />
     <Compile Include="Map\Lighting\BasicLighting.Heightmap.cs" />
@@ -204,6 +194,7 @@
     <Compile Include="Entities\Model\ModelBuilder.cs" />
     <Compile Include="MeshBuilder\Builder.cs" />
     <Compile Include="MeshBuilder\FloodFill.cs" />
+    <Compile Include="MeshBuilder\CuboidDrawer.cs" />
     <Compile Include="MeshBuilder\NormalBuilder.cs" />
     <Compile Include="MeshBuilder\AdvLightingBuilder.cs" />
     <Compile Include="MeshBuilder\TileDrawer.cs" />
@@ -216,10 +207,9 @@
     <Compile Include="Network\Protocols\CPE.cs" />
     <Compile Include="Network\Protocols\IProtocol.cs" />
     <Compile Include="Network\Protocols\WoM.cs" />
-    <Compile Include="Particles\CollidableParticle.cs" />
+    <Compile Include="Network\Utils\PingList.cs" />
     <Compile Include="Particles\Particle.cs" />
     <Compile Include="Particles\ParticleManager.cs" />
-    <Compile Include="Particles\ParticleSpawner.cs" />
     <Compile Include="Entities\Player.cs" />
     <Compile Include="Game\ChatLog.cs" />
     <Compile Include="Game\Game.cs" />
@@ -229,8 +219,6 @@
     <Compile Include="GraphicsAPI\Direct3D9Api.cs" />
     <Compile Include="GraphicsAPI\IGraphicsApi.cs" />
     <Compile Include="GraphicsAPI\OpenGLApi.cs" />
-    <Compile Include="Commands\Command.cs" />
-    <Compile Include="Commands\DefaultCommands.cs" />
     <Compile Include="GraphicsAPI\VertexFormats.cs" />
     <Compile Include="Hotkeys\HotkeyList.cs" />
     <Compile Include="Hotkeys\LwjglToKey.cs" />
@@ -274,13 +262,11 @@
     <Compile Include="Platform\Platform.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Rendering\HeldBlockAnimation.cs" />
     <Compile Include="Rendering\HeldBlockRenderer.cs" />
     <Compile Include="Rendering\ChunkSorter.cs" />
     <Compile Include="Rendering\ChunkUpdater.cs" />
     <Compile Include="Rendering\Env\EnvRenderer.cs" />
     <Compile Include="Rendering\Env\MapBordersRenderer.cs" />
-    <Compile Include="Rendering\Env\MinimalEnvRenderer.cs" />
     <Compile Include="Rendering\Env\SkyboxRenderer.cs" />
     <Compile Include="Rendering\Env\StandardEnvRenderer.cs" />
     <Compile Include="Rendering\Env\WeatherRenderer.cs" />
@@ -293,7 +279,7 @@
     <Compile Include="Selections\SelectionBoxComparer.cs" />
     <Compile Include="Selections\SelectionManager.cs" />
     <Compile Include="Singleplayer\FallingPhysics.cs" />
-    <Compile Include="Singleplayer\FoilagePhysics.cs" />
+    <Compile Include="Singleplayer\FoliagePhysics.cs" />
     <Compile Include="Singleplayer\LiquidPhysics.cs" />
     <Compile Include="Singleplayer\OtherPhysics.cs" />
     <Compile Include="Singleplayer\Physics.cs" />
@@ -301,7 +287,7 @@
     <Compile Include="Singleplayer\TNTPhysics.cs" />
     <Compile Include="TexturePack\EntryList.cs" />
     <Compile Include="TexturePack\Animations.cs" />
-    <Compile Include="TexturePack\LavaAnimation.cs" />
+    <Compile Include="TexturePack\LiquidAnimations.cs" />
     <Compile Include="TexturePack\Side.cs" />
     <Compile Include="TexturePack\TextureCache.cs" />
     <Compile Include="TexturePack\TerrainAtlas1D.cs" />
@@ -335,16 +321,14 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="2D\Drawing" />
-    <Folder Include="2D\Screens\Inventory" />
+    <Folder Include="2D\Screens\Overlays" />
     <Folder Include="2D\Utils" />
     <Folder Include="2D\Screens" />
     <Folder Include="2D\Screens\Menu" />
     <Folder Include="2D\Widgets" />
     <Folder Include="2D\Widgets\Menu" />
     <Folder Include="2D\Widgets\Chat" />
-    <Folder Include="2D\Widgets\PlayerList" />
     <Folder Include="Blocks" />
-    <Folder Include="Entities\Mobs\AI" />
     <Folder Include="Entities\Components" />
     <Folder Include="Entities\Mobs" />
     <Folder Include="Events" />

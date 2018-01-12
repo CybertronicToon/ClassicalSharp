@@ -6,16 +6,11 @@
 using System;
 
 namespace ClassicalSharp.Generator {
-	
-	public abstract class Noise {
-		
-		public abstract double Compute(double x, double y);
-	}
-	
-	public sealed class ImprovedNoise : Noise {
+
+	public sealed class ImprovedNoise {
 		
 		public ImprovedNoise(JavaRandom rnd) {
-			// shuffle randomly using fisher-yates		
+			// shuffle randomly using fisher-yates
 			for (int i = 0; i < 256; i++)
 				p[i] = (byte)i;
 			
@@ -27,7 +22,7 @@ namespace ClassicalSharp.Generator {
 				p[i + 256] = p[i];
 		}
 		
-		public override double Compute(double x, double y) {
+		public double Compute(double x, double y) {
 			int xFloor = x >= 0 ? (int)x : (int)x - 1;
 			int yFloor = y >= 0 ? (int)y : (int)y - 1;
 			int X = xFloor & 0xFF, Y = yFloor & 0xFF;
@@ -36,6 +31,10 @@ namespace ClassicalSharp.Generator {
 			double u = x * x * x * (x * (x * 6 - 15) + 10); // Fade(x)
 			double v = y * y * y * (y * (y * 6 - 15) + 10); // Fade(y)
 			int A = p[X] + Y, B = p[X + 1] + Y;
+			
+			// Normally, calculating Grad involves a function call. However, we can directly pack this table
+			// (since each value indicates either -1, 0 1) into a set of bit flags. This way we avoid needing 
+			// to call another function that performs branching
 			const int xFlags = 0x46552222, yFlags = 0x2222550A;
 			
 			int hash = (p[p[A]] & 0xF) << 1; 
@@ -56,7 +55,7 @@ namespace ClassicalSharp.Generator {
 		byte[] p = new byte[512];
 	}
 	
-	public sealed class OctaveNoise : Noise {
+	public sealed class OctaveNoise {
 		
 		readonly ImprovedNoise[] baseNoise;
 		public OctaveNoise(int octaves, JavaRandom rnd) {
@@ -65,27 +64,27 @@ namespace ClassicalSharp.Generator {
 				baseNoise[i] = new ImprovedNoise(rnd);
 		}
 		
-		public override double Compute(double x, double y) {
+		public double Compute(double x, double y) {
 			double amplitude = 1, frequency = 1;
 			double sum = 0;
 			for (int i = 0; i < baseNoise.Length; i++) {
 				sum += baseNoise[i].Compute(x * frequency, y * frequency) * amplitude;
-				amplitude *= 2;
-				frequency /= 2;
+				amplitude *= 2.0;
+				frequency *= 0.5;
 			}
 			return sum;
 		}
 	}
 	
-	public sealed class CombinedNoise : Noise {
+	public sealed class CombinedNoise {
 		
-		readonly Noise noise1, noise2;
-		public CombinedNoise(Noise noise1, Noise noise2) {
+		readonly OctaveNoise noise1, noise2;
+		public CombinedNoise(OctaveNoise noise1, OctaveNoise noise2) {
 			this.noise1 = noise1;
 			this.noise2 = noise2;
 		}
 		
-		public override double Compute(double x, double y) {
+		public double Compute(double x, double y) {
 			double offset = noise2.Compute(x, y);
 			return noise1.Compute(x + offset, y);
 		}

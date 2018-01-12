@@ -11,17 +11,22 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		public override void Init() {
+			base.Init();
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 40, FontStyle.Regular);
-			
+			regularFont = new Font(game.FontName, 40);
+			ContextRecreated();
+		}
+		
+		protected override void ContextRecreated() {
+			string score = game.Chat.Status1.Text;
 			widgets = new Widget[] {
 				TextWidget.Create(game, "Game over!", regularFont)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, -150),
-				TextWidget.Create(game, "Score: 0", titleFont)
+				TextWidget.Create(game, score, titleFont)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, -75),
-				ButtonWidget.Create(game, 401, 40, "Generate new level...", titleFont, GenLevelClick)
+				ButtonWidget.Create(game, 400, "Generate new level...", titleFont, GenLevelClick)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, 25),
-				ButtonWidget.Create(game, 401, 40, "Load level...", titleFont, LoadLevelClick)
+				ButtonWidget.Create(game, 400, "Load level...", titleFont, LoadLevelClick)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, 75),
 			};
 		}

@@ -7,7 +7,7 @@ using OpenTK.Input;
 
 namespace ClassicalSharp.Entities {
 	
-	public partial class LocalPlayer : Player, IGameComponent {
+	public class LocalPlayer : Player, IGameComponent {
 		
 		/// <summary> Position the player's position is set to when the 'respawn' key binding is pressed. </summary>
 		public Vector3 Spawn;
@@ -24,18 +24,17 @@ namespace ClassicalSharp.Entities {
 			get { return (float)PhysicsComponent.GetMaxHeight(physics.jumpVel); }
 		}
 		
-		internal float curSwing;
 		internal CollisionsComponent collisions;
 		public HacksComponent Hacks;
 		internal PhysicsComponent physics;
 		internal InputComponent input;
 		internal SoundComponent sound;
 		internal LocalInterpComponent interp;
+		internal TiltComponent tilt;
 		
 		public LocalPlayer(Game game) : base(game) {
 			DisplayName = game.Username;
 			SkinName = game.Username;
-			SkinIdentifier = "skin_255";
 			
 			collisions = new CollisionsComponent(game, this);
 			Hacks = new HacksComponent(game, this);
@@ -43,6 +42,7 @@ namespace ClassicalSharp.Entities {
 			input = new InputComponent(game, this);
 			sound = new SoundComponent(game, this);
 			interp = new LocalInterpComponent(game, this);
+			tilt = new TiltComponent(game);
 			
 			physics.hacks = Hacks; input.Hacks = Hacks;
 			physics.collisions = collisions;
@@ -50,7 +50,7 @@ namespace ClassicalSharp.Entities {
 		}
 		
 		public override void Tick(double delta) {
-			if (game.World.IsNotLoaded) return;
+			if (game.World.blocks == null) return;
 			StepSize = Hacks.FullBlockStep && Hacks.Enabled && Hacks.CanAnyHacks
 				&& Hacks.CanSpeed ? 1 : 0.5f;
 			OldVelocity = Velocity;
@@ -59,21 +59,31 @@ namespace ClassicalSharp.Entities {
 			bool wasOnGround = onGround;
 			
 			HandleInput(ref xMoving, ref zMoving);
-			physics.DoEntityPush(ref xMoving, ref zMoving);
-			physics.UpdateVelocityState(xMoving, zMoving);
-			physics.PhysicsTick(xMoving, zMoving);
+			if (!Hacks.Floating && Hacks.CanBePushed) physics.DoEntityPush();
+			
+			// Immediate stop in noclip mode
+			if (!Hacks.NoclipSlide && (Hacks.Noclip && xMoving == 0 && zMoving == 0))
+				Velocity = Vector3.Zero;
+			physics.UpdateVelocityState();
+			physics.PhysicsTick(GetHeadingVelocity(zMoving, xMoving));
 			
 			interp.next.Pos = Position; Position = interp.prev.Pos;
 			anim.UpdateAnimState(interp.prev.Pos, interp.next.Pos, delta);
+			tilt.UpdateAnimState(delta);
 			
 			CheckSkin();
 			sound.Tick(wasOnGround);
 		}
+		
+		Vector3 GetHeadingVelocity(float xMoving, float zMoving) {
+			return Utils.RotateY(xMoving, 0, zMoving, HeadYRadians);
+		}
+		
 
 		public override void RenderModel(double deltaTime, float t) {
 			anim.GetCurrentAnimState(t);
-			curSwing = Utils.Lerp(anim.swingO, anim.swingN, t);
-
+			tilt.GetCurrentAnimState(t);
+			
 			if (!game.Camera.IsThirdPerson) return;
 			Model.Render(this);
 		}
@@ -120,17 +130,23 @@ namespace ClassicalSharp.Entities {
 		/// <summary> Linearly interpolates position and rotation between the previous and next state. </summary>
 		public void SetInterpPosition(float t) {
 			if (!Hacks.WOMStyleHacks || !Hacks.Noclip)
-				Position = Vector3.Lerp(interp.prev.Pos, interp.next.Pos, t);			
+				Position = Vector3.Lerp(interp.prev.Pos, interp.next.Pos, t);
 			interp.LerpAngles(t);
 		}
 		
 		public void Init(Game game) {
+			Hacks.Enabled = !game.PureClassic && Options.GetBool(OptionsKey.HacksOn, true);
+			Health = 20;
+			if (game.ClassicMode) return;
+			
 			Hacks.SpeedMultiplier = Options.GetFloat(OptionsKey.Speed, 0.1f, 50, 10);
-			Hacks.PushbackPlacing = !game.ClassicMode && Options.GetBool(OptionsKey.PushbackPlacing, false);
-			Hacks.NoclipSlide = Options.GetBool(OptionsKey.NoclipSlide, false);
-			Hacks.WOMStyleHacks = !game.ClassicMode && Options.GetBool(OptionsKey.WOMStyleHacks, false);
-			Hacks.Enabled = !game.PureClassic && Options.GetBool(OptionsKey.HacksEnabled, true);
-			Hacks.FullBlockStep = !game.ClassicMode && Options.GetBool(OptionsKey.FullBlockStep, false);
+			Hacks.PushbackPlacing = Options.GetBool(OptionsKey.PushbackPlacing, false);
+			Hacks.NoclipSlide     = Options.GetBool(OptionsKey.NoclipSlide, false);
+			Hacks.WOMStyleHacks   = Options.GetBool(OptionsKey.WOMStyleHacks, false);			
+			Hacks.FullBlockStep   = Options.GetBool(OptionsKey.FullBlockStep, false);			
+			physics.userJumpVel   = Options.GetFloat(OptionsKey.JumpVelocity, 0.0f, 52.0f, 0.42f);
+			physics.jumpVel = physics.userJumpVel;
+			
 		}
 		
 		public void Ready(Game game) { }
@@ -143,6 +159,7 @@ namespace ClassicalSharp.Entities {
 			Velocity = Vector3.Zero;
 			physics.jumpVel = 0.42f;
 			physics.serverJumpVel = 0.42f;
+			Health = 20;
 		}
 	}
 }

@@ -8,10 +8,8 @@ using ClassicalSharp.Singleplayer;
 using OpenTK.Input;
 
 namespace ClassicalSharp.Gui.Screens {
-	public sealed class GenLevelScreen : MenuScreen {
-		
-		public GenLevelScreen(Game game) : base(game) {
-		}
+	public sealed class GenLevelScreen : MenuScreen {		
+		public GenLevelScreen(Game game) : base(game) { }
 
 		MenuInputWidget selected;
 		
@@ -39,10 +37,14 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		public override void Init() {
+			base.Init();
 			game.Keyboard.KeyRepeat = true;
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 16, FontStyle.Regular);
-			
+			regularFont = new Font(game.FontName, 16);
+			ContextRecreated();
+		}
+		
+		protected override void ContextRecreated() {
 			widgets = new Widget[] {
 				MakeInput(-80, false, game.World.Width.ToString()),
 				MakeInput(-40, false, game.World.Height.ToString()),
@@ -54,12 +56,11 @@ namespace ClassicalSharp.Gui.Screens {
 				TextWidget.Create(game, "Generate new level", regularFont)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 0, -130),
 				
-				ButtonWidget.Create(game, 201, 40, "Flatgrass", titleFont, GenFlatgrassClick)
+				ButtonWidget.Create(game, 200, "Flatgrass", titleFont, GenFlatgrassClick)
 					.SetLocation(Anchor.Centre, Anchor.Centre, -120, 100),
-				ButtonWidget.Create(game, 201, 40, "Vanilla",  titleFont, GenNotchyClick)
+				ButtonWidget.Create(game, 200, "Vanilla", titleFont, GenNotchyClick)
 					.SetLocation(Anchor.Centre, Anchor.Centre, 120, 100),
-				MakeBack(false, titleFont,
-				         (g, w) => g.Gui.SetNewScreen(new PauseScreen(g))),
+				MakeBack(false, titleFont, SwitchPause),
 			};
 		}
 		
@@ -79,7 +80,7 @@ namespace ClassicalSharp.Gui.Screens {
 				.SetLocation(Anchor.Centre, Anchor.Centre, x, y);
 			
 			label.XOffset = -110 - label.Width / 2;
-			label.CalculatePosition();
+			label.Reposition();
 			label.Colour = new FastColour(224, 224, 224);
 			return label;
 		}
@@ -109,17 +110,16 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		void GenerateMap(IMapGenerator gen) {
-			SinglePlayerServer server = (SinglePlayerServer)game.Server;
 			int width = GetInt(0), height = GetInt(1);
 			int length = GetInt(2), seed = GetSeedInt(3);
 			
 			long volume = (long)width * height * length;
-			if (volume > 800 * 800 * 800) {
+			if (volume > int.MaxValue) {
 				game.Chat.Add("&cThe generated map's volume is too big.");
 			} else if (width == 0 || height == 0 || length == 0) {
 				game.Chat.Add("&cOne of the map dimensions is invalid.");
 			} else {
-				server.GenMap(width, height, length, seed, gen);
+				game.Server.BeginGeneration(width, height, length, seed, gen);
 			}
 		}
 		
@@ -139,6 +139,59 @@ namespace ClassicalSharp.Gui.Screens {
 			if (!input.Validator.IsValidValue(text))
 				return 0;
 			return text == "" ? 0 : Int32.Parse(text);
+		}
+	}
+	
+	public sealed class ClassicGenLevelScreen : MenuScreen {	
+		public ClassicGenLevelScreen(Game game) : base(game) { }
+		
+		public override bool HandlesMouseClick(int mouseX, int mouseY, MouseButton button) {
+			return HandleMouseClick(widgets, mouseX, mouseY, button);
+		}
+		
+		public override bool HandlesKeyDown(Key key) {
+			if (key == Key.Escape) {
+				game.Gui.SetNewScreen(null);
+				return true;
+			}
+			return true;
+		}
+		
+		public override void Init() {
+			base.Init();
+			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
+			regularFont = new Font(game.FontName, 16);
+			ContextRecreated();
+		}
+		
+		protected override void ContextRecreated() {
+			widgets = new Widget[] {
+				ButtonWidget.Create(game, 400, "Small", titleFont, GenSmallClick)
+					.SetLocation(Anchor.Centre, Anchor.Centre, 0, -100),
+				ButtonWidget.Create(game, 400, "Normal", titleFont, GenMediumClick)
+					.SetLocation(Anchor.Centre, Anchor.Centre, 0, -50),
+				ButtonWidget.Create(game, 400, "Huge", titleFont, GenHugeClick)
+					.SetLocation(Anchor.Centre, Anchor.Centre, 0, 0),
+				MakeBack(false, titleFont, SwitchPause),
+			};
+		}
+		
+		void GenSmallClick(Game game, Widget widget, MouseButton btn, int x, int y) {
+			if (btn == MouseButton.Left) DoGen(128);
+		}
+		
+		void GenMediumClick(Game game, Widget widget, MouseButton btn, int x, int y) {
+			if (btn == MouseButton.Left) DoGen(256);
+		}
+		
+		void GenHugeClick(Game game, Widget widget, MouseButton btn, int x, int y) {
+			if (btn == MouseButton.Left) DoGen(512);
+		}
+		
+		void DoGen(int size) {
+			int seed = new Random().Next();
+			IMapGenerator gen = new NotchyGenerator();
+			game.Server.BeginGeneration(size, 64, size, seed, gen);
 		}
 	}
 }

@@ -8,6 +8,16 @@ namespace ClassicalSharp.Gui.Screens {
 	public abstract class ClickableScreen : Screen {
 		
 		public ClickableScreen(Game game) : base(game) {
+		}		
+		
+		// These were sourced by taking a screenshot of vanilla
+		// Then using paint to extract the colour components
+		// Then using wolfram alpha to solve the glblendfunc equation
+		static FastColour topBackCol = new FastColour(24, 24, 24, 105);
+		static FastColour bottomBackCol = new FastColour(51, 51, 98, 162);
+
+		protected void RenderMenuBounds() {
+			gfx.Draw2DQuad(0, 0, game.Width, game.Height, topBackCol, bottomBackCol);
 		}
 		
 		protected bool HandleMouseClick(Widget[] widgets, int mouseX, int mouseY, MouseButton button) {
@@ -49,17 +59,17 @@ namespace ClassicalSharp.Gui.Screens {
 		protected virtual void WidgetSelected(Widget widget) {
 		}
 		
-		protected ButtonWidget MakeBack(bool toGame, Font font, Action<Game, Widget> onClick) {
-			return MakeBack(201, toGame ? "Back to game" : "Back to menu", 25, font, onClick);
+		protected ButtonWidget MakeBack(bool toGame, Font font, SimpleClickHandler onClick) {
+			int width = game.UseClassicOptions ? 400 : 200;
+			return MakeBack(width, toGame ? "Back to game" : "Cancel", 25, font, onClick);
 		}
 		
-		protected ButtonWidget MakeBack(string text, int y, Font font, Action<Game, Widget> onClick) {
-			return MakeBack(201, text, y, font, onClick);
-		}
-		
-		protected ButtonWidget MakeBack(int width, string text, int y, Font font, Action<Game, Widget> onClick) {
-			return ButtonWidget.Create(game, width, 40, text, font, LeftOnly(onClick))
+		protected ButtonWidget MakeBack(int width, string text, int y, Font font, SimpleClickHandler onClick) {
+			return ButtonWidget.Create(game, width, text, font, LeftOnly(onClick))
 				.SetLocation(Anchor.Centre, Anchor.BottomOrRight, 0, y);
 		}
+		
+		protected static void SwitchOptions(Game g, Widget w) { g.Gui.SetNewScreen(new OptionsGroupScreen(g)); }
+		protected static void SwitchPause(Game g, Widget w) { g.Gui.SetNewScreen(new PauseScreen(g)); }
 	}
 }

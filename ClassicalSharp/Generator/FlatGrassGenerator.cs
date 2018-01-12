@@ -2,36 +2,45 @@
 using System;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Generator {
 	
 	public unsafe sealed class FlatGrassGenerator : IMapGenerator {
 		
 		public override string GeneratorName { get { return "Flatgrass"; } }
 		
-		int width, length;
-		public override byte[] Generate(int width, int height, int length, int seed) {
-			byte[] map = new byte[width * height * length];
-			this.width = width;
-			this.length = length;
+		public override BlockID[] Generate() {
+			BlockID[] map = new BlockID[Width * Height * Length];
 			
-			fixed(byte* ptr = map) {
+			fixed(BlockID* ptr = map) {
 				CurrentState = "Setting dirt blocks";
-				MapSet(ptr, 0, height / 2 - 2, Block.Dirt);
+				MapSet(ptr, 0, Height / 2 - 2, Block.Dirt);
 				
 				CurrentState = "Setting grass blocks";
-				MapSet(ptr, height / 2 - 1, height / 2 - 1, Block.Grass);
+				MapSet(ptr, Height / 2 - 1, Height / 2 - 1, Block.Grass);
 			}
 			return map;
 		}
 		
-		unsafe void MapSet(byte* ptr, int yStart, int yEnd, byte block) {
-			int startIndex = yStart * length * width;
-			int endIndex = (yEnd * length + (length - 1)) * width + (width - 1);
+		unsafe void MapSet(BlockID* ptr, int yStart, int yEnd, BlockID block) {
+			yStart = Math.Max(yStart, 0); yEnd = Math.Max(yEnd, 0);
+			int startIndex = yStart * Length * Width;
+			int endIndex = (yEnd * Length + (Length - 1)) * Width + (Width - 1);
 			int count = (endIndex - startIndex) + 1, offset = 0;
 			
 			while (offset < count) {
-				int bytes = Math.Min(count - offset, width * length);
+				int bytes = Math.Min(count - offset, Width * Length) * sizeof(BlockID);
+				#if USE16_BIT
+				MemUtils.memset((IntPtr)ptr, (byte)block, startIndex + offset, bytes);
+				#else
 				MemUtils.memset((IntPtr)ptr, block, startIndex + offset, bytes);
+				#endif
+				
 				offset += bytes;
 				CurrentProgress = (float)offset / count;
 			}

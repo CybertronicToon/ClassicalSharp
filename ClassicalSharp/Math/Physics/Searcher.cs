@@ -4,13 +4,19 @@ using ClassicalSharp.Map;
 using System;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Physics {
 	
 	public struct State {
 		public int X, Y, Z;
 		public float tSquared;
 		
-		public State(int x, int y, int z, byte block, float tSquared) {
+		public State(int x, int y, int z, BlockID block, float tSquared) {
 			X = x << 3; Y = y << 3; Z = z << 3;
 			X |= (block & 0x07);
 			Y |= (block & 0x38) >> 3;
@@ -44,23 +50,22 @@ namespace ClassicalSharp.Physics {
 			int elements = (max.X + 1 - min.X) * (max.Y + 1 - min.Y) * (max.Z + 1 - min.Z);
 			if (elements > stateCache.Length) {
 				stateCache = new State[elements];
-			}
-			
+			}			
 			
 			AABB blockBB = default(AABB);
-			BlockInfo info = game.BlockInfo;
 			int count = 0;
+			
 			// Order loops so that we minimise cache misses
 			for (int y = min.Y; y <= max.Y; y++)
 				for (int z = min.Z; z <= max.Z; z++)
 					for (int x = min.X; x <= max.X; x++)
 			{
-				byte block = game.World.GetPhysicsBlock(x, y, z);
-				if (info.Collide[block] != CollideType.Solid) continue;
+				BlockID block = game.World.GetPhysicsBlock(x, y, z);
+				if (BlockInfo.Collide[block] != CollideType.Solid) continue;
 				
-				blockBB.Min = info.MinBB[block];
+				blockBB.Min = BlockInfo.MinBB[block];
 				blockBB.Min.X += x; blockBB.Min.Y += y; blockBB.Min.Z += z;
-				blockBB.Max = info.MaxBB[block];
+				blockBB.Max = BlockInfo.MaxBB[block];
 				blockBB.Max.X += x; blockBB.Max.Y += y; blockBB.Max.Z += z;
 				
 				if (!entityExtentBB.Intersects(blockBB)) continue; // necessary for non whole blocks. (slabs)

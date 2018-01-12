@@ -28,6 +28,7 @@ namespace ClassicalSharp {
 		internal void OnLoad() {
 			Mouse = window.Mouse;
 			Keyboard = window.Keyboard;
+			
 			#if ANDROID
 			Graphics = new OpenGLESApi();
 			#elif !USE_DX
@@ -44,8 +45,6 @@ namespace ClassicalSharp {
 			Drawer2D = new GdiPlusDrawer2D(Graphics);
 			#endif
 			
-			
-			Options.Load();
 			Entities = new EntityList(this);
 			AcceptedUrls.Load();
 			DeniedUrls.Load();
@@ -53,41 +52,43 @@ namespace ClassicalSharp {
 			LastModified.Load();
 			
 			if (Options.GetBool(OptionsKey.SurvivalMode, false)) {
-				Mode = AddComponent(new SurvivalGameMode());
+				Mode = new SurvivalGameMode();
 			} else {
-				Mode = AddComponent(new CreativeGameMode());
+				Mode = new CreativeGameMode();
 			}
+			Components.Add(Mode);
 			
 			Input = new InputHandler(this);
-			defaultIb = Graphics.MakeDefaultIb();				
-			ParticleManager = AddComponent(new ParticleManager());
-			TabList = AddComponent(new TabList());
+			defaultIb = Graphics.MakeDefaultIb();
+			ParticleManager = new ParticleManager(); Components.Add(ParticleManager);
+			TabList = new TabList(); Components.Add(TabList);			
 			LoadOptions();
 			LoadGuiOptions();
-			Chat = AddComponent(new Chat());
+			Chat = new Chat(); Components.Add(Chat);
+			
 			WorldEvents.OnNewMap += OnNewMapCore;
 			WorldEvents.OnNewMapLoaded += OnNewMapLoadedCore;
 			Events.TextureChanged += TextureChangedCore;
 			
-			BlockInfo = new BlockInfo();
 			BlockInfo.Init();
 			ModelCache = new ModelCache(this);
 			ModelCache.InitCache();
-			AsyncDownloader = AddComponent(new AsyncDownloader(Drawer2D));
-			Lighting = AddComponent(new BasicLighting());
+			AsyncDownloader = new AsyncDownloader(Drawer2D); Components.Add(AsyncDownloader);
+			Lighting = new BasicLighting(); Components.Add(Lighting);
 			
-			Drawer2D.UseBitmappedChat = ClassicMode || !Options.GetBool(OptionsKey.ArialChatFont, false);
-			Drawer2D.BlackTextShadows = Options.GetBool(OptionsKey.BlackTextShadows, false);
+			Drawer2D.UseBitmappedChat = ClassicMode || !Options.GetBool(OptionsKey.UseChatFont, false);
+			Drawer2D.BlackTextShadows = Options.GetBool(OptionsKey.BlackText, false);
+			Graphics.Mipmaps = Options.GetBool(OptionsKey.Mipmaps, false);
 			
-			TerrainAtlas1D = new TerrainAtlas1D(Graphics);
-			TerrainAtlas = new TerrainAtlas2D(Graphics, Drawer2D);
-			Animations = AddComponent(new Animations());
-			Inventory = AddComponent(new Inventory());
+			TerrainAtlas1D = new TerrainAtlas1D(this);
+			TerrainAtlas = new TerrainAtlas2D(this);
+			Animations = new Animations(); Components.Add(Animations);
+			Inventory = new Inventory(); Components.Add(Inventory);
 			
-			BlockInfo.SetDefaultBlockPerms(Inventory.CanPlace, Inventory.CanDelete);
+			BlockInfo.SetDefaultPerms();
 			World = new World(this);
-			LocalPlayer = AddComponent(new LocalPlayer(this));
-			Entities[EntityList.SelfID] = LocalPlayer;
+			LocalPlayer = new LocalPlayer(this); Components.Add(LocalPlayer);
+			Entities.List[EntityList.SelfID] = LocalPlayer;
 			Width = window.Width; Height = window.Height;
 			
 			MapRenderer = new MapRenderer(this);
@@ -108,22 +109,22 @@ namespace ClassicalSharp {
 			Camera = Cameras[0];
 			UpdateProjection();
 			
-			Gui = AddComponent(new GuiInterface(this));
-			CommandList = AddComponent(new CommandList());
-			SelectionManager = AddComponent(new SelectionManager());
-			WeatherRenderer = AddComponent(new WeatherRenderer());
-			HeldBlockRenderer = AddComponent(new HeldBlockRenderer());
+			Gui = new GuiInterface(this); Components.Add(Gui);
+			CommandList = new CommandList(); Components.Add(CommandList);
+			SelectionManager = new SelectionManager(); Components.Add(SelectionManager);
+			WeatherRenderer = new WeatherRenderer(); Components.Add(WeatherRenderer);
+			HeldBlockRenderer = new HeldBlockRenderer(); Components.Add(HeldBlockRenderer);
 			
 			Graphics.DepthTest = true;
 			Graphics.DepthTestFunc(CompareFunc.LessEqual);
 			//Graphics.DepthWrite = true;
 			Graphics.AlphaBlendFunc(BlendFunc.SourceAlpha, BlendFunc.InvSourceAlpha);
-			Graphics.AlphaTestFunc(CompareFunc.Greater, 0.5f);
+			Graphics.AlphaTestFunc(CompareFunc.Greater, 0.5f);			
 			Culling = new FrustumCulling();
-			Picking = AddComponent(new PickedPosRenderer());
-			AudioPlayer = AddComponent(new AudioPlayer());
-			AxisLinesRenderer = AddComponent(new AxisLinesRenderer());
-			SkyboxRenderer = AddComponent(new SkyboxRenderer());
+			Picking = new PickedPosRenderer(); Components.Add(Picking);
+			AudioPlayer = new AudioPlayer(); Components.Add(AudioPlayer);
+			AxisLinesRenderer = new AxisLinesRenderer(); Components.Add(AxisLinesRenderer);
+			SkyboxRenderer = new SkyboxRenderer(); Components.Add(SkyboxRenderer);
 			
 			plugins = new PluginLoader(this);
 			List<string> nonLoaded = plugins.LoadAll();
@@ -147,7 +148,7 @@ namespace ClassicalSharp {
 				MapBordersRenderer.UseLegacyMode(true);
 				EnvRenderer.UseLegacyMode(true);
 			}
-			Gui.SetNewScreen(new LoadingMapScreen(this, connectString, "Waiting for handshake"));
+			Gui.SetNewScreen(new LoadingMapScreen(this, connectString, ""));
 			Server.Connect(IPAddress, Port);
 		}
 		
@@ -163,11 +164,13 @@ namespace ClassicalSharp {
 		void LoadOptions() {
 			ClassicMode = Options.GetBool("mode-classic", false);
 			ClassicHacks = Options.GetBool(OptionsKey.AllowClassicHacks, false);
-			AllowCustomBlocks = Options.GetBool(OptionsKey.AllowCustomBlocks, true);
+			UseCustomBlocks = Options.GetBool(OptionsKey.UseCustomBlocks, true);
 			UseCPE = Options.GetBool(OptionsKey.UseCPE, true);
 			SimpleArmsAnim = Options.GetBool(OptionsKey.SimpleArmsAnim, false);
+			ChatLogging = Options.GetBool(OptionsKey.ChatLogging, true);
+			ClassicArmModel = Options.GetBool(OptionsKey.ClassicArmModel, ClassicMode);
 			
-			ViewBobbing = Options.GetBool(OptionsKey.ViewBobbing, false);
+			ViewBobbing = Options.GetBool(OptionsKey.ViewBobbing, true);
 			FpsLimitMethod method = Options.GetEnum(OptionsKey.FpsLimit, FpsLimitMethod.LimitVSync);
 			SetFpsLimitMethod(method);
 			ViewDistance = Options.GetInt(OptionsKey.ViewDist, 16, 4096, 512);
@@ -180,7 +183,7 @@ namespace ClassicalSharp {
 			ModifiableLiquids = !ClassicMode && Options.GetBool(OptionsKey.ModifiableLiquids, false);
 			CameraClipping = Options.GetBool(OptionsKey.CameraClipping, true);
 			
-			AllowServerTextures = Options.GetBool(OptionsKey.AllowServerTextures, true);
+			UseServerTextures = Options.GetBool(OptionsKey.UseServerTextures, true);
 			MouseSensitivity = Options.GetInt(OptionsKey.Sensitivity, 1, 100, 30);
 			ShowBlockInHand = Options.GetBool(OptionsKey.ShowBlockInHand, true);
 			InvertMouse = Options.GetBool(OptionsKey.InvertMouse, false);
@@ -200,14 +203,14 @@ namespace ClassicalSharp {
 			ChatScale = Options.GetFloat(OptionsKey.ChatScale, 0.35f, 5f, 1f);
 			ShowFPS = Options.GetBool(OptionsKey.ShowFPS, true);
 
-			UseClassicGui = Options.GetBool(OptionsKey.UseClassicGui, true) || ClassicMode;
-			UseClassicTabList = Options.GetBool(OptionsKey.UseClassicTabList, false);
-			UseClassicOptions = Options.GetBool(OptionsKey.UseClassicOptions, false);
+			UseClassicGui = Options.GetBool(OptionsKey.UseClassicGui, true)          || ClassicMode;
+			UseClassicTabList = Options.GetBool(OptionsKey.UseClassicTabList, false) || ClassicMode;
+			UseClassicOptions = Options.GetBool(OptionsKey.UseClassicOptions, false) || ClassicMode;
 			
 			TabAutocomplete = Options.GetBool(OptionsKey.TabAutocomplete, false);
 			FontName = Options.Get(OptionsKey.FontName) ?? "Arial";
 			if (ClassicMode) FontName = "Arial";
-			
+
 			try {
 				using (Font f = new Font(FontName, 16)) { }
 			} catch (Exception) {
@@ -218,18 +221,15 @@ namespace ClassicalSharp {
 		
 		ScheduledTask entTask;
 		void InitScheduledTasks() {
-			const double defTicks = 1.0 / 20, camTicks = 1.0 / 60;
+			const double defTicks = 1.0 / 20;
+			const double netTicks = 1.0 / 60;
+			
 			AddScheduledTask(30, AsyncDownloader.PurgeOldEntriesTask);
-			AddScheduledTask(defTicks, Server.Tick);
+			AddScheduledTask(netTicks, Server.Tick);
 			entTask = AddScheduledTask(defTicks, Entities.Tick);
 			
 			AddScheduledTask(defTicks, ParticleManager.Tick);
 			AddScheduledTask(defTicks, Animations.Tick);
-			AddScheduledTask(camTicks, CameraTick);
-		}
-		
-		void CameraTick(ScheduledTask task) {
-			Camera.Tick(task.Interval);
 		}
 	}
 }

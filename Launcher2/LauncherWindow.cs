@@ -43,10 +43,10 @@ namespace Launcher {
 		public AsyncDownloader Downloader;
 		
 		/// <summary> Returns the width of the client drawing area. </summary>
-		public int Width { get { return Window.Width; } }
+		public int Width { get { return Window.ClientSize.Width; } }
 		
 		/// <summary> Returns the height of the client drawing area. </summary>
-		public int Height { get { return Window.Height; } }
+		public int Height { get { return Window.ClientSize.Height; } }
 		
 		/// <summary> Bitmap that contains the entire array of pixels that describe the client drawing area. </summary>
 		public Bitmap Framebuffer;
@@ -61,11 +61,6 @@ namespace Launcher {
 			get { return Window.WindowState == WindowState.Minimized || (Width == 1 && Height == 1); }
 		}
 		
-		/// <summary> Contains metadata attached for different screen instances,
-		/// typically used to save 'last text entered' text when a screen is disposed. </summary>
-		public Dictionary<string, Dictionary<string, object>> ScreenMetadata =
-			new Dictionary<string, Dictionary<string, object>>();
-		
 		internal ResourceFetcher fetcher;
 		internal UpdateCheckTask checkTask;
 		bool fullRedraw;
@@ -79,8 +74,13 @@ namespace Launcher {
 			Window.Keyboard.KeyDown += KeyDown;
 			LoadFont();
 			logoFont = new Font(FontName, 32, FontStyle.Regular);
+			
 			string path = Assembly.GetExecutingAssembly().Location;
-			Window.Icon = Icon.ExtractAssociatedIcon(path);
+			try {
+				Window.Icon = Icon.ExtractAssociatedIcon(path);
+			} catch (Exception ex) {
+				ErrorHandler.LogError("LauncherWindow.Init() - Icon", ex);
+			}
 			//Minimised = Window.WindowState == WindowState.Minimized;
 			
 			PlatformID platform = Environment.OSVersion.Platform;
@@ -94,7 +94,7 @@ namespace Launcher {
 				platformDrawer = new OSXPlatformDrawer();
 			}
 			
-			Drawer.Colours['g'] = new FastColour(125, 125, 125);
+			IDrawer2D.Cols['g'] = new FastColour(125, 125, 125);
 		}
 		
 		void LoadFont() {
@@ -134,20 +134,21 @@ namespace Launcher {
 			if (String.IsNullOrEmpty(hash)) return false;
 			
 			ClientStartData data = null;
-			foreach (ServerListEntry entry in publicServers) {
-				if (entry.Hash == hash) {
-					data = new ClientStartData(Session.Username, entry.Mppass,
-					                           entry.IPAddress, entry.Port);
-					Client.Start(data, true, ref ShouldExit);
-					return true;
-				}
+			for (int i = 0; i < publicServers.Count; i++) {
+				ServerListEntry entry = publicServers[i];
+				if (entry.Hash != hash) continue;
+				
+				data = new ClientStartData(Session.Username, entry.Mppass,
+				                           entry.IPAddress, entry.Port, entry.Name);
+				Client.Start(data, true, ref ShouldExit);
+				return true;
 			}
 			
 			// Fallback to private server handling
 			try {
 				data = Session.GetConnectInfo(hash);
 			} catch (WebException ex) {
-				ErrorHandler2.LogError("retrieving server information", ex);
+				ErrorHandler.LogError("retrieving server information", ex);
 				return false;
 			} catch (ArgumentOutOfRangeException) {
 				return false;
@@ -157,18 +158,14 @@ namespace Launcher {
 		}
 		
 		public void Run() {
-			Window = new NativeWindow(640, 400, Program.AppName, 0,
-			                          GraphicsMode.Default, DisplayDevice.Default);
+			Window = new NativeWindow(640, 400, Program.AppName,
+			                          GraphicsMode.Default, DisplayDevice.Primary);
 			Window.Visible = true;
-			Drawer = new GdiPlusDrawer2D(null);
+			Drawer = new GdiPlusDrawer2D();
 			Init();
 			TryLoadTexturePack();
 			platformDrawer.info = Window.WindowInfo;
 			platformDrawer.Init();
-			
-			string audioPath = Path.Combine(Program.AppDirectory, "audio");
-			BinUnpacker.Unpack(audioPath, "dig");
-			BinUnpacker.Unpack(audioPath, "step");
 			
 			fetcher = new ResourceFetcher();
 			fetcher.CheckResourceExistence();
@@ -237,6 +234,7 @@ namespace Launcher {
 		bool IsShutdown(Key key) {
 			if (key == Key.F4 && (lastKey == Key.AltLeft || lastKey == Key.AltRight))
 				return true;
+			
 			// On OSX, Cmd+Q should also terminate the process.
 			if (!OpenTK.Configuration.RunningOnMacOS) return false;
 			return key == Key.Q && (lastKey == Key.WinLeft || lastKey == Key.WinRight);

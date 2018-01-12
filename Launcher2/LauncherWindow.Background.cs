@@ -40,10 +40,14 @@ namespace Launcher {
 		void ExtractTexturePack(string texPack) {
 			using (Stream fs = new FileStream(texPack, FileMode.Open, FileAccess.Read, FileShare.Read)) {
 				ZipReader reader = new ZipReader();
-				reader.ShouldProcessZipEntry = (f) => f == "default.png" || f == "terrain.png";
+				reader.SelectZipEntry = SelectZipEntry;
 				reader.ProcessZipEntry = ProcessZipEntry;
 				reader.Extract(fs);
 			}
+		}
+		
+		bool SelectZipEntry(string filename) {
+			return filename == "default.png" || filename == "terrain.png";
 		}
 		
 		void ProcessZipEntry(string filename, byte[] data, ZipEntry entry) {
@@ -52,7 +56,7 @@ namespace Launcher {
 				
 				Bitmap bmp = Platform.ReadBmp32Bpp(Drawer, data);
 				Drawer.SetFontBitmap(bmp);
-				useBitmappedFont = !Options.GetBool(OptionsKey.ArialChatFont, false);
+				useBitmappedFont = !Options.GetBool(OptionsKey.UseChatFont, false);
 				fontPng = true;
 			} else if (filename == "terrain.png") {
 				if (terrainPng) return;
@@ -112,13 +116,13 @@ namespace Launcher {
 
 				drawer.UseBitmappedChat = (useBitmappedFont || ClassicBackground) && fontPng;
 				DrawTextArgs args = new DrawTextArgs("&eClassical&fSharp", logoFont, false);
-				Size size = drawer.MeasureChatSize(ref args);
+				Size size = drawer.MeasureSize(ref args);
 				int xStart = Width / 2 - size.Width / 2;
 				
 				args.Text = "&0Classical&0Sharp";
-				drawer.DrawChatText(ref args, xStart + 4, 4);
+				drawer.DrawText(ref args, xStart + 4, 4);
 				args.Text = "&eClassical&fSharp";
-				drawer.DrawChatText(ref args, xStart, 0);
+				drawer.DrawText(ref args, xStart, 0);
 				drawer.UseBitmappedChat = false;
 			}
 		}

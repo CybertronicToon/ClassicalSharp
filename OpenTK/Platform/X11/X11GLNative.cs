@@ -85,8 +85,7 @@ namespace OpenTK.Platform.X11 {
 		int keysyms_per_keycode;    // The number of KeySyms for each KeyCode.
 		IntPtr[] keysyms;
 		
-		public X11GLNative(int x, int y, int width, int height, string title,
-		                   GraphicsMode mode, GameWindowFlags options, DisplayDevice device) {
+		public X11GLNative(int x, int y, int width, int height, string title, GraphicsMode mode, DisplayDevice device) {
 			if (width <= 0)
 				throw new ArgumentOutOfRangeException("width", "Must be higher than zero.");
 			if (height <= 0)
@@ -482,26 +481,6 @@ namespace OpenTK.Platform.X11 {
 			get { return ClientRectangle.Size; }
 			set { ClientRectangle = new Rectangle(Point.Empty, value); }
 		}
-
-		public int Width {
-			get { return ClientSize.Width; }
-			set { ClientSize = new Size(value, Height); }
-		}
-		
-		public int Height {
-			get { return ClientSize.Height; }
-			set { ClientSize = new Size(Width, value); }
-		}
-		
-		public int X {
-			get { return Location.X; }
-			set { Location = new Point(value, Y); }
-		}
-
-		public int Y {
-			get { return Location.Y; }
-			set { Location = new Point(X, value); }
-		}
 		
 		public Icon Icon {
 			get { return icon; }
@@ -551,8 +530,6 @@ namespace OpenTK.Platform.X11 {
 				}
 
 				icon = value;
-				if (IconChanged != null)
-					IconChanged(this, EventArgs.Empty);
 			}
 		}
 		
@@ -650,21 +627,19 @@ namespace OpenTK.Platform.X11 {
 			}
 		}
 
-		public event EventHandler<EventArgs> Load;
-		public event EventHandler<EventArgs> Unload;
-		public event EventHandler<EventArgs> Move;
-		public event EventHandler<EventArgs> Resize;
-		public event EventHandler<System.ComponentModel.CancelEventArgs> Closing;
-		public event EventHandler<EventArgs> Closed;
-		public event EventHandler<EventArgs> Disposed;
-		public event EventHandler<EventArgs> IconChanged;
-		public event EventHandler<EventArgs> TitleChanged;
-		public event EventHandler<EventArgs> VisibleChanged;
-		public event EventHandler<EventArgs> FocusedChanged;
-		public event EventHandler<EventArgs> WindowStateChanged;
+		public event EventHandler Load;
+		public event EventHandler Unload;
+		public event EventHandler Move;
+		public event EventHandler Resize;
+		public event EventHandler<CancelEventArgs> Closing;
+		public event EventHandler Closed;
+		public event EventHandler Disposed;
+		public event EventHandler VisibleChanged;
+		public event EventHandler FocusedChanged;
+		public event EventHandler WindowStateChanged;
 		public event EventHandler<KeyPressEventArgs> KeyPress;
-		public event EventHandler<EventArgs> MouseEnter;
-		public event EventHandler<EventArgs> MouseLeave;
+		public event EventHandler MouseEnter;
+		public event EventHandler MouseLeave;
 		
 		public KeyboardDevice Keyboard {
 			get { return keyboard; }
@@ -721,24 +696,6 @@ namespace OpenTK.Platform.X11 {
 		/// <summary> Gets the current window handle. </summary>
 		public IntPtr Handle {
 			get { return window.WindowHandle; }
-		}
-		
-		/// <summary> TODO: Use atoms for this property.
-		/// Gets or sets the GameWindow title. </summary>
-		public string Title {
-			get {
-				IntPtr name = IntPtr.Zero;
-				API.XFetchName(window.Display, window.WindowHandle, ref name);
-				return name == IntPtr.Zero ? String.Empty : Marshal.PtrToStringAnsi(name);
-			}
-			set {
-				if (value != null && value != Title) {
-					API.XStoreName(window.Display, window.WindowHandle, value);
-				}
-
-				if (TitleChanged != null)
-					TitleChanged(this, EventArgs.Empty);
-			}
 		}
 		
 		public bool Visible {

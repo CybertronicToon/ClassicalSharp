@@ -11,14 +11,14 @@ namespace ClassicalSharp {
 		
 		public ChatLine Status1, Status2, Status3, BottomRight1,
 		BottomRight2, BottomRight3, Announcement;
-		public ChatLine[] ClientStatus = new ChatLine[6];
+		public ChatLine[] ClientStatus = new ChatLine[3];
 		
 		Game game;
 		public void Init(Game game) {
 			this.game = game;
 		}
 
-		public void Ready(Game game) { }			
+		public void Ready(Game game) { }
 		public void Reset(Game game) { logName = null; }
 		public void OnNewMap(Game game) { }
 		public void OnNewMapLoaded(Game game) { }
@@ -30,24 +30,20 @@ namespace ClassicalSharp {
 		/// <summary> List of chat messages sent by the user to the server. </summary>
 		public List<string> InputLog = new List<string>();
 		
-		public void Send(string text, bool partial) {
-			text = text.TrimEnd(trimChars);
+		public void Send(string text) {
 			if (String.IsNullOrEmpty(text)) return;
 			
+			InputLog.Add(text);
 			if (game.CommandList.IsCommandPrefix(text)) {
 				game.CommandList.Execute(text);
-				return;
+			} else {
+				game.Server.SendChat(text);
 			}
-			game.Server.SendChat(text, partial);
 		}
 		
 		static char[] trimChars = new char[] { ' ', '\0' };
 		StringBuffer logBuffer = new StringBuffer(128);
-		public void Add(string text) {
-			Log.Add(text);
-			LogChatToFile(text);
-			game.Events.RaiseChatReceived(text, MessageType.Normal);
-		}
+		public void Add(string text) { Add(text, MessageType.Normal); }
 		
 		public void Add(string text, MessageType type) {
 			if (type == MessageType.Normal) {
@@ -67,7 +63,7 @@ namespace ClassicalSharp {
 				BottomRight3 = text;
 			} else if (type == MessageType.Announcement) {
 				Announcement = text;
-			} else if (type >= MessageType.ClientStatus1 && type <= MessageType.ClientStatus6) {
+			} else if (type >= MessageType.ClientStatus1 && type <= MessageType.ClientStatus3) {
 				ClientStatus[(int)(type - MessageType.ClientStatus1)] = text;
 			}
 			game.Events.RaiseChatReceived(text, type);
@@ -95,15 +91,18 @@ namespace ClassicalSharp {
 		}
 		
 		static bool Allowed(char c) {
-			return c == '[' || c == ']' || c == '(' || c == ')' ||
-				(c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || 
+			return
+				c == '{' || c == '}' ||
+				c == '[' || c == ']' ||
+				c == '(' || c == ')' ||
+				(c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
 				(c >= 'A' && c <= 'Z');
 		}
 		
 		DateTime last;
 		StreamWriter writer = null;
 		void LogChatToFile(string text) {
-			if (logName == null) return;
+			if (logName == null || !game.ChatLogging) return;
 			DateTime now = DateTime.Now;
 			
 			if (now.Day != last.Day || now.Month != last.Month || now.Year != last.Year) {

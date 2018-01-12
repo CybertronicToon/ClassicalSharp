@@ -9,8 +9,10 @@ namespace ClassicalSharp.Network.Protocols {
 		
 		public CPEProtocolBlockDefs(Game game) : base(game) { }
 		
-		public override void Init() {
-			if (!game.UseCPE || !game.AllowCustomBlocks) return;
+		public override void Init() { Reset(); }
+		
+		public override void Reset() {
+			if (!game.UseCPE || !game.UseCustomBlocks) return;
 			net.Set(Opcode.CpeDefineBlock, HandleDefineBlock, 80);
 			net.Set(Opcode.CpeRemoveBlockDefinition, HandleRemoveBlockDefinition, 2);
 			net.Set(Opcode.CpeDefineBlockExt, HandleDefineBlockExt, 85);
@@ -18,37 +20,50 @@ namespace ClassicalSharp.Network.Protocols {
 		
 		internal void HandleDefineBlock() {
 			byte id = HandleDefineBlockCommonStart(reader, false);
-			BlockInfo info = game.BlockInfo;
 			
 			byte shape = reader.ReadUInt8();
 			if (shape > 0 && shape <= 16)
-				info.MaxBB[id].Y = shape / 16f;
+				BlockInfo.MaxBB[id].Y = shape / 16f;
 			
 			HandleDefineBlockCommonEnd(reader, shape, id);
 			// Update sprite BoundingBox if necessary
-			if (info.Draw[id] == DrawType.Sprite) {
+			if (BlockInfo.Draw[id] == DrawType.Sprite) {
 				using (FastBitmap dst = new FastBitmap(game.TerrainAtlas.AtlasBitmap, true, true))
-					info.RecalculateBB(id, dst);
+					BlockInfo.RecalculateBB(id, dst);
 			}
 		}
 		
 		void HandleRemoveBlockDefinition() {
-			byte id = reader.ReadUInt8();
-			BlockInfo info = game.BlockInfo;
+			byte block = reader.ReadUInt8();
+			bool didBlockLight = BlockInfo.BlocksLight[block];
 			
-			info.DefinedCustomBlocks[id >> 5] &= ~(1u << (id & 0x1F));
-			info.ResetBlockProps(id);
-			info.UpdateCulling(id);
+			BlockInfo.ResetBlockProps(block);
+			OnBlockUpdated(block, didBlockLight);
+			BlockInfo.UpdateCulling(block);
+			
+			game.Inventory.Reset(block);
+			if (block < Block.CpeCount) {
+				game.Inventory.AddDefault(block);
+			}
+			
+			BlockInfo.DefinedCustomBlocks[block >> 5] &= ~(1u << (block & 0x1F));
 			game.Events.RaiseBlockDefinitionChanged();
 		}
 		
+		void OnBlockUpdated(byte block, bool didBlockLight) {
+			if (game.World.blocks == null) return;
+			
+			// Need to refresh lighting when a block's light blocking state changes
+			if (BlockInfo.BlocksLight[block] != didBlockLight) {
+				game.Lighting.Refresh();
+			}
+		}
+		
 		void HandleDefineBlockExt() {
-			if (!game.AllowCustomBlocks) {
+			if (!game.UseCustomBlocks) {
 				net.SkipPacketData(Opcode.CpeDefineBlockExt); return;
 			}
-			byte id = HandleDefineBlockCommonStart(reader, 
-			                                       net.cpeData.blockDefsExtVer >= 2);
-			BlockInfo info = game.BlockInfo;
+			byte block = HandleDefineBlockCommonStart(reader, net.cpeData.blockDefsExtVer >= 2);
 			Vector3 min, max;
 			
 			min.X = reader.ReadUInt8() / 16f; Utils.Clamp(ref min.X, 0, 15/16f);
@@ -58,58 +73,64 @@ namespace ClassicalSharp.Network.Protocols {
 			max.Y = reader.ReadUInt8() / 16f; Utils.Clamp(ref max.Y, 1/16f, 1);
 			max.Z = reader.ReadUInt8() / 16f; Utils.Clamp(ref max.Z, 1/16f, 1);
 			
-			info.MinBB[id] = min;
-			info.MaxBB[id] = max;
-			HandleDefineBlockCommonEnd(reader, 1, id);
+			BlockInfo.MinBB[block] = min;
+			BlockInfo.MaxBB[block] = max;
+			HandleDefineBlockCommonEnd(reader, 1, block);
 		}
 		
 		byte HandleDefineBlockCommonStart(NetReader reader, bool uniqueSideTexs) {
-			byte id = reader.ReadUInt8();
-			BlockInfo info = game.BlockInfo;
-			info.ResetBlockProps(id);
+			byte block = reader.ReadUInt8();
+			bool didBlockLight = BlockInfo.BlocksLight[block];
+			BlockInfo.ResetBlockProps(block);
 			
-			info.Name[id] = reader.ReadCp437String();
-			info.Collide[id] = (CollideType)reader.ReadUInt8();
+			BlockInfo.Name[block] = reader.ReadString();
+			BlockInfo.SetCollide(block, reader.ReadUInt8());
 			
-			info.SpeedMultiplier[id] = (float)Math.Pow(2, (reader.ReadUInt8() - 128) / 64f);
-			info.SetTex(reader.ReadUInt8(), Side.Top, id);
+			BlockInfo.SpeedMultiplier[block] = (float)Math.Pow(2, (reader.ReadUInt8() - 128) / 64f);
+			BlockInfo.SetTex(reader.ReadUInt8(), Side.Top, block);
 			if (uniqueSideTexs) {
-				info.SetTex(reader.ReadUInt8(), Side.Left, id);
-				info.SetTex(reader.ReadUInt8(), Side.Right, id);
-				info.SetTex(reader.ReadUInt8(), Side.Front, id);
-				info.SetTex(reader.ReadUInt8(), Side.Back, id);
+				BlockInfo.SetTex(reader.ReadUInt8(), Side.Left, block);
+				BlockInfo.SetTex(reader.ReadUInt8(), Side.Right, block);
+				BlockInfo.SetTex(reader.ReadUInt8(), Side.Front, block);
+				BlockInfo.SetTex(reader.ReadUInt8(), Side.Back, block);
 			} else {
-				info.SetSide(reader.ReadUInt8(), id);
+				BlockInfo.SetSide(reader.ReadUInt8(), block);
 			}
-			info.SetTex(reader.ReadUInt8(), Side.Bottom, id);
+			BlockInfo.SetTex(reader.ReadUInt8(), Side.Bottom, block);
 			
-			info.BlocksLight[id] = reader.ReadUInt8() == 0;
+			BlockInfo.BlocksLight[block] = reader.ReadUInt8() == 0;
+			OnBlockUpdated(block, didBlockLight);
+			
 			byte sound = reader.ReadUInt8();
 			if (sound < breakSnds.Length) {
-				info.StepSounds[id] = stepSnds[sound];
-				info.DigSounds[id] = breakSnds[sound];
+				BlockInfo.StepSounds[block] = stepSnds[sound];
+				BlockInfo.DigSounds[block] = breakSnds[sound];
 			}
-			info.FullBright[id] = reader.ReadUInt8() != 0;
-			return id;
+			BlockInfo.FullBright[block] = reader.ReadUInt8() != 0;
+			return block;
 		}
 		
-		void HandleDefineBlockCommonEnd(NetReader reader, byte shape, byte id) {
-			BlockInfo info = game.BlockInfo;
+		void HandleDefineBlockCommonEnd(NetReader reader, byte shape, byte block) {
 			byte blockDraw = reader.ReadUInt8();
-			if (shape == 0)
+			if (shape == 0) {
+				BlockInfo.SpriteOffset[block] = blockDraw;
 				blockDraw = DrawType.Sprite;
-			info.SetBlockDraw(id, blockDraw);
-			info.LightOffset[id] = info.CalcLightOffset(id);
+			}
+			BlockInfo.LightOffset[block] = BlockInfo.CalcLightOffset(block);
 			
 			byte fogDensity = reader.ReadUInt8();
-			info.FogDensity[id] = fogDensity == 0 ? 0 : (fogDensity + 1) / 128f;
-			info.FogColour[id] = new FastColour(
+			BlockInfo.FogDensity[block] = fogDensity == 0 ? 0 : (fogDensity + 1) / 128f;
+			BlockInfo.FogColour[block] = new FastColour(
 				reader.ReadUInt8(), reader.ReadUInt8(), reader.ReadUInt8());
-			info.Tinted[id] = info.FogColour[id] != FastColour.Black && info.Name[id].IndexOf('#') >= 0;
+			BlockInfo.Tinted[block] = BlockInfo.FogColour[block] != FastColour.Black && BlockInfo.Name[block].IndexOf('#') >= 0;
 			
-			info.UpdateCulling(id);
+			BlockInfo.SetBlockDraw(block, blockDraw);
+			BlockInfo.CalcRenderBounds(block);
+			BlockInfo.UpdateCulling(block);
+			
+			game.Inventory.AddDefault(block);
+			BlockInfo.DefinedCustomBlocks[block >> 5] |= (1u << (block & 0x1F));
 			game.Events.RaiseBlockDefinitionChanged();
-			info.DefinedCustomBlocks[id >> 5] |= (1u << (id & 0x1F));
 		}
 		
 		#if FALSE
@@ -151,8 +172,7 @@ namespace ClassicalSharp.Network.Protocols {
 			stepSnds[2] = SoundType.Gravel; breakSnds[2] = SoundType.Gravel;
 			stepSnds[3] = SoundType.Grass; breakSnds[3] = SoundType.Grass;
 			stepSnds[4] = SoundType.Stone; breakSnds[4] = SoundType.Stone;
-			// TODO: metal sound type, just use stone for now.
-			stepSnds[5] = SoundType.Stone; breakSnds[5] = SoundType.Stone;
+			stepSnds[5] = SoundType.Metal; breakSnds[5] = SoundType.Metal;
 			stepSnds[6] = SoundType.Stone; breakSnds[6] = SoundType.Glass;
 			stepSnds[7] = SoundType.Cloth; breakSnds[7] = SoundType.Cloth;
 			stepSnds[8] = SoundType.Sand; breakSnds[8] = SoundType.Sand;

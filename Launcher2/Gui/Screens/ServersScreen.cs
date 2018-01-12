@@ -20,6 +20,8 @@ namespace Launcher.Gui.Screens {
 		
 		public override void Tick() {
 			base.Tick();
+			if (fetchingList) CheckFetchStatus();
+			
 			TableWidget table = (TableWidget)widgets[view.tableIndex];
 			if (!game.Window.Mouse[MouseButton.Left]) {
 				table.DraggingColumn = -1;
@@ -71,8 +73,8 @@ namespace Launcher.Gui.Screens {
 		
 		protected override void RedrawLastInput() {
 			base.RedrawLastInput();
-			if (curInput != widgets[view.hashIndex])
-				return;
+			if (curInput != widgets[view.hashIndex]) return;
+			
 			TableWidget table = (TableWidget)widgets[view.tableIndex];
 			table.SetSelected(widgets[view.hashIndex].Text);
 			MarkPendingRedraw();
@@ -99,15 +101,17 @@ namespace Launcher.Gui.Screens {
 			InputWidget hashWidget = (InputWidget)widgets[view.hashIndex];
 			hashWidget.Chars.ClipboardFilter = HashFilter;
 			
-			widgets[view.backIndex].OnClick =
-				(x, y) => game.SetScreen(new MainScreen(game));
+			widgets[view.backIndex].OnClick = SwitchToMain;
 			widgets[view.connectIndex].OnClick = ConnectToServer;
+			widgets[view.refreshIndex].OnClick = RefreshList;
 			
 			TableWidget widget = (TableWidget)widgets[view.tableIndex];
 			widget.NeedRedraw = MarkPendingRedraw;
 			widget.SelectedChanged = SelectedChanged;
 			SetupInputHandlers();
 		}
+		
+		void SwitchToMain(int x, int y) { game.SetScreen(new MainScreen(game)); }
 		
 		void FilterList() {
 			if (curInput != widgets[view.searchIndex])
@@ -130,9 +134,21 @@ namespace Launcher.Gui.Screens {
 			game.ConnectToServer(table.servers, Get(view.hashIndex));
 		}
 		
+		bool fetchingList = false;
+		void RefreshList(int mouseX, int mouseY) {
+			if (fetchingList) return;
+			fetchingList = true;
+			game.Session.FetchServersAsync();
+
+			view.RefreshText = "&eWorking..";
+			Resize();
+		}
+		
+		float tableAcc;
 		protected override void MouseWheelChanged(object sender, MouseWheelEventArgs e) {
 			TableWidget table = (TableWidget)widgets[view.tableIndex];
-			table.CurrentIndex -= e.Delta;
+			int steps = Utils.AccumulateWheelDelta(ref tableAcc, e.Delta);
+			table.CurrentIndex -= steps;
 			MarkPendingRedraw();
 		}
 		
@@ -168,6 +184,19 @@ namespace Launcher.Gui.Screens {
 				game.Dirty = true;
 			}
 			pendingRedraw = false;
+		}
+		
+		void CheckFetchStatus() {
+			if (!game.Session.Done) return;
+			fetchingList = false;
+			
+			view.RefreshText = game.Session.Exception == null ? "Refresh" : "&cFailed";
+			Resize();
+			
+			// needed to ensure 'highlighted server hash' is over right entry after refresh
+			TableWidget table = (TableWidget)widgets[view.tableIndex];
+			table.SetSelected(widgets[view.hashIndex].Text);
+			MarkPendingRedraw();
 		}
 		
 		void MarkPendingRedraw() {

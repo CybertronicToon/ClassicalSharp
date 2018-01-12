@@ -60,7 +60,6 @@ namespace Launcher.Updater {
 				string path = Path.Combine(Program.AppDirectory, "CS_Update");
 				Directory.CreateDirectory(path);
 				
-				reader.ShouldProcessZipEntry = (f) => true;
 				reader.ProcessZipEntry = ProcessZipEntry;
 				reader.Extract(stream);
 			}
@@ -74,9 +73,9 @@ namespace Launcher.Updater {
 			try {
 				File.SetLastWriteTimeUtc(path, PatchTime);
 			} catch (IOException ex) {
-				ErrorHandler2.LogError("I/O exception when trying to set modified time for: " + filename, ex);
+				ErrorHandler.LogError("I/O exception when trying to set modified time for: " + filename, ex);
 			} catch (UnauthorizedAccessException ex) {
-				ErrorHandler2.LogError("Permissions exception when trying to set modified time for: " + filename, ex);
+				ErrorHandler.LogError("Permissions exception when trying to set modified time for: " + filename, ex);
 			}
 		}
 	}

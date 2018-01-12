@@ -1,14 +1,21 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
+using ClassicalSharp.Entities;
 using OpenTK;
+
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
 
 namespace ClassicalSharp {
 	
 	/// <summary> Performs automatic rotation of directional blocks. </summary>
 	public static class AutoRotate {
 		
-		public static byte RotateBlock(Game game, byte block) {
-			string name = game.BlockInfo.Name[block];
+		public static BlockID RotateBlock(Game game, BlockID block) {
+			string name = BlockInfo.Name[block];
 			int dirIndex = name.LastIndexOf('-');
 			if (dirIndex == -1) return block; // not a directional block
 			
@@ -31,7 +38,7 @@ namespace ClassicalSharp {
 			return block;
 		}
 		
-		static byte RotateCorner(Game game, byte block, string name, Vector3 offset) {
+		static BlockID RotateCorner(Game game, BlockID block, string name, Vector3 offset) {
 			if (offset.X < 0.5f && offset.Z < 0.5f) {
 				return Find(game, block, name + "-NW");
 			} else if (offset.X >= 0.5f && offset.Z < 0.5f) {
@@ -44,17 +51,15 @@ namespace ClassicalSharp {
 			return block;
 		}
 
-		static byte RotateVertical(Game game, byte block, string name, Vector3 offset) {
+		static BlockID RotateVertical(Game game, BlockID block, string name, Vector3 offset) {
 			string height = offset.Y >= 0.5f ? "-U" : "-D";
 			return Find(game, block, name + height);
 		}
 		
-		static byte RotateOther(Game game, byte block, string name, Vector3 offset) {
+		static BlockID RotateOther(Game game, BlockID block, string name, Vector3 offset) {
 			// Fence type blocks
-			if (game.BlockInfo.FindID(name + "-UD") == -1) {
-				float headY = game.LocalPlayer.HeadY;
-				if (headY < 0) headY += 360;
-				
+			if (BlockInfo.FindID(name + "-UD") == -1) {
+				float headY = LocationUpdate.Clamp(game.LocalPlayer.HeadY);				
 				if (headY < 45 || (headY >= 135 && headY < 225) || headY > 315)
 					return Find(game, block, name + "-WE");
 				return Find(game, block, name + "-NS");
@@ -71,7 +76,7 @@ namespace ClassicalSharp {
 			return block;
 		}
 		
-		static byte RotateDirection(Game game, byte block, string name, Vector3 offset) {
+		static BlockID RotateDirection(Game game, BlockID block, string name, Vector3 offset) {
 			Vector3 southEast = new Vector3 (1, 0, 1);
 			Vector3 southWest = new Vector3 (-1, 0, 1);
 			
@@ -98,9 +103,9 @@ namespace ClassicalSharp {
 			}
 		}
 		
-		static byte Find(Game game, byte block, string name) {
-			int rotated = game.BlockInfo.FindID(name);
-			if (rotated != -1) return (byte)rotated;
+		static BlockID Find(Game game, BlockID block, string name) {
+			int rotated = BlockInfo.FindID(name);
+			if (rotated != -1) return (BlockID)rotated;
 			return block;
 		}
 	}

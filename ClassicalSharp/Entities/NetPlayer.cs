@@ -1,5 +1,6 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
+using ClassicalSharp.Model;
 using OpenTK;
 
 namespace ClassicalSharp.Entities {
@@ -7,10 +8,9 @@ namespace ClassicalSharp.Entities {
 	public sealed class NetPlayer : Player {
 		
 		NetInterpComponent interp;
-		public NetPlayer(string displayName, string skinName, Game game, byte id) : base(game) {
+		public NetPlayer(string displayName, string skinName, Game game) : base(game) {
 			DisplayName = displayName;
 			SkinName = skinName;
-			SkinIdentifier = "skin_" + id;
 			interp = new NetInterpComponent(game, this);
 		}
 		
@@ -28,19 +28,18 @@ namespace ClassicalSharp.Entities {
 		bool shouldRender = false;
 		public override void RenderModel(double deltaTime, float t) {
 			Position = Vector3.Lerp(interp.prev.Pos, interp.next.Pos, t);
-			HeadY = Utils.LerpAngle(interp.prev.HeadY, interp.next.HeadY, t);
-			RotY = Utils.LerpAngle(interp.prevRotY, interp.nextRotY, t);
-			HeadX = Utils.LerpAngle(interp.prev.HeadX, interp.next.HeadX, t);
+			interp.LerpAngles(t);
 			
 			anim.GetCurrentAnimState(t);
-			shouldRender = Model.ShouldRender(this, game.Culling);
+			shouldRender = IModel.ShouldRender(this, game.Culling);
 			if (shouldRender) Model.Render(this);
 		}
 		
 		public override void RenderName() { 
 			if (!shouldRender) return;
-			float dist = Model.RenderDistance(this);
-			if (dist <= 32 * 32) DrawName();
+			float dist = IModel.RenderDistance(this, game.CurrentCameraPos);			
+			float threshold = game.Entities.NamesMode == NameMode.AllUnscaled ? 8192 * 8192 : 32 * 32;
+			if (dist <= threshold) DrawName();
 		}
 	}
 }

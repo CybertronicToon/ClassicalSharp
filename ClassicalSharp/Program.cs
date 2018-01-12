@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Windows.Forms;
 using ClassicalSharp.Textures;
 using OpenTK;
 
@@ -9,31 +10,40 @@ namespace ClassicalSharp {
 	
 	internal static class Program {
 		
-		public const string AppName = "ClassicalSharp 0.99.4";
+		public const string AppName = "ClassicalSharp 0.99.9.8";
 		
 		public static string AppDirectory;
-		
+		#if !LAUNCHER
 		[STAThread]
 		static void Main(string[] args) {
 			AppDirectory = AppDomain.CurrentDomain.BaseDirectory;
 			string logPath = Path.Combine(AppDirectory, "client.log");
 			ErrorHandler.InstallHandler(logPath);
 			CleanupMainDirectory();
+			Configuration.SkipPerfCountersHack();
 			
 			Utils.LogDebug("Starting " + AppName + "..");
-			string path = Path.Combine(Program.AppDirectory, TexturePack.Dir);
+			string path = Path.Combine(Program.AppDirectory, "texpacks");
 			if (!File.Exists(Path.Combine(path, "default.zip"))) {
-				Utils.LogDebug("default.zip not found. Cannot start.");
-				return;
+				MessageDefaultZipMissing(); return;
 			}
 			
 			bool nullContext = true;
 			#if !USE_DX
 			nullContext = false;
 			#endif
-			int width, height;
-			SelectResolution(out width, out height);
-				
+			
+			Options.Load();
+			DisplayDevice device = DisplayDevice.Primary;
+			int width  = Options.GetInt(OptionsKey.WindowWidth,  0, device.Width,  0);
+			int height = Options.GetInt(OptionsKey.WindowHeight, 0, device.Height, 0);
+			
+			// No custom resolution has been set
+			if (width == 0 || height == 0) {
+				width = 854; height = 480;			
+				if (device.Width < 854) width = 640;
+			}
+			
 			if (args.Length == 0 || args.Length == 1) {
 				const string skinServer = "http://static.classicube.net/skins/";
 				string user = args.Length > 0 ? args[0] : "Singleplayer";
@@ -41,22 +51,15 @@ namespace ClassicalSharp {
 					game.Run();
 			} else if (args.Length < 4) {
 				Utils.LogDebug("ClassicalSharp.exe is only the raw client. You must either use the launcher or"
-				     + " provide command line arguments to start the client.");
+				               + " provide command line arguments to start the client.");
 			} else {
 				RunMultiplayer(args, nullContext, width, height);
 			}
 		}
 		
-		static void SelectResolution(out int width, out int height) {
-			DisplayDevice device = DisplayDevice.Default;
-			width = 640; height = 480;
-			
-			if (device.Width >= 1024 && device.Height >= 768) {
-				width = 800; height = 600;
-			}
-			if (device.Width >= 1920 && device.Height >= 1080) {
-				width = 1600; height = 900;
-			}
+		// put in separate function, because we don't want to load winforms assembly if possible
+		static void MessageDefaultZipMissing() {
+			MessageBox.Show("default.zip not found, try running the launcher first.", "Missing file");
 		}
 		
 		static void RunMultiplayer(string[] args, bool nullContext, int width, int height) {
@@ -71,43 +74,26 @@ namespace ClassicalSharp {
 				return;
 			} else if (port < ushort.MinValue || port > ushort.MaxValue) {
 				Utils.LogDebug("Specified port " + port + " is out of valid range.");
+				return;
 			}
 
-			string skinServer = args.Length >= 5 ? args[4] : "http://s3.amazonaws.com/MinecraftSkins/";
+			string skinServer = args.Length >= 5 ? args[4] : "http://static.classicube.net/skins/";
 			using (Game game = new Game(args[0], args[1], skinServer, nullContext, width, height)) {
 				game.IPAddress = ip;
 				game.Port = port;
 				game.Run();
 			}
 		}
+		#endif
 		
 		internal static void CleanupMainDirectory() {
 			string mapPath = Path.Combine(Program.AppDirectory, "maps");
 			if (!Directory.Exists(mapPath))
 				Directory.CreateDirectory(mapPath);
-			string texPath = Path.Combine(Program.AppDirectory, TexturePack.Dir);
+			
+			string texPath = Path.Combine(Program.AppDirectory, "texpacks");
 			if (!Directory.Exists(texPath))
 				Directory.CreateDirectory(texPath);
-			
-			CopyFiles("*.cw", mapPath);
-			CopyFiles("*.dat", mapPath);
-			CopyFiles("*.zip", texPath);
-		}
-		
-		static void CopyFiles(string filter, string folder) {
-			string[] files = Directory.GetFiles(AppDirectory, filter);
-			for (int i = 0; i < files.Length; i++) {
-				string name = Path.GetFileName(files[i]);
-				string dst = Path.Combine(folder, name);
-				if (File.Exists(dst))  continue;
-				
-				try {
-					File.Copy(files[i], dst);
-					File.Delete(files[i]);
-				} catch (IOException ex) {
-					ErrorHandler.LogError("Program.CopyFiles()", ex);
-				}
-			}
 		}
 	}
 }

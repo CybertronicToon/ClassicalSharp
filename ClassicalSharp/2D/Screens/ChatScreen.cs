@@ -19,40 +19,38 @@ namespace ClassicalSharp.Gui.Screens {
 		HudScreen hud;
 		int chatLines;
 		TextWidget announcement;
-		InputWidget input;
+		internal InputWidget input;
 		TextGroupWidget status, bottomRight, normalChat, clientStatus;
 		bool suppressNextPress = true;
 		int chatIndex;
-		AltTextInputWidget altText;
+		SpecialInputWidget altText;
 		
 		Font chatFont, chatUrlFont, announcementFont;
+		// needed for lost contexts, to restore chat typed in
+		static string chatInInputBuffer = null;
+		
 		public override void Init() {
-			float textScale = game.Drawer2D.UseBitmappedChat ? 1.25f : 1;
-			int fontSize = (int)(12 * game.GuiChatScale * textScale);
+			int fontSize = (int)(8 * game.GuiChatScale);
 			Utils.Clamp(ref fontSize, 8, 60);
 			chatFont = new Font(game.FontName, fontSize);
 			chatUrlFont = new Font(game.FontName, fontSize, FontStyle.Underline);
 			
-			fontSize = (int)(14 * game.GuiChatScale);
+			fontSize = (int)(16 * game.GuiChatScale);
 			Utils.Clamp(ref fontSize, 8, 60);
 			announcementFont = new Font(game.FontName, fontSize);
-			ConstructWidgets();
-			
-			int[] indices = new int[chatLines];
-			for (int i = 0; i < indices.Length; i++)
-				indices[i] = -1;
-			Metadata = indices;
-			SetInitialMessages();
+			ContextRecreated();
 			
 			game.Events.ChatReceived += ChatReceived;
 			game.Events.ChatFontChanged += ChatFontChanged;
 			game.Events.ColourCodeChanged += ColourCodeChanged;
+			game.Graphics.ContextLost += ContextLost;
+			game.Graphics.ContextRecreated += ContextRecreated;
 		}
 		
 		void ConstructWidgets() {
 			input = new ChatInputWidget(game, chatFont)
 				.SetLocation(Anchor.LeftOrTop, Anchor.BottomOrRight, 5, 5);
-			altText = new AltTextInputWidget(game, chatFont, input);
+			altText = new SpecialInputWidget(game, chatFont, input);
 			altText.Init();
 			UpdateAltTextY();
 			
@@ -70,7 +68,7 @@ namespace ClassicalSharp.Gui.Screens {
 				.SetLocation(Anchor.LeftOrTop, Anchor.BottomOrRight, 10, hud.BottomOffset + 15);
 			normalChat.Init();
 			
-			clientStatus = new TextGroupWidget(game, game.Chat.ClientStatus.Length, chatFont, chatUrlFont)				
+			clientStatus = new TextGroupWidget(game, game.Chat.ClientStatus.Length, chatFont, chatUrlFont)
 				.SetLocation(Anchor.LeftOrTop, Anchor.BottomOrRight, 10, hud.BottomOffset + 15);
 			clientStatus.Init();
 			
@@ -90,12 +88,13 @@ namespace ClassicalSharp.Gui.Screens {
 			bottomRight.SetText(1, chat.BottomRight2.Text);
 			bottomRight.SetText(0, chat.BottomRight3.Text);
 			announcement.SetText(chat.Announcement.Text);
-			for (int i = 0; i < chat.ClientStatus.Length; i++)
+			for (int i = 0; i < chat.ClientStatus.Length; i++) {
 				clientStatus.SetText(i, chat.ClientStatus[i].Text);
+			}
 			
-			if (game.chatInInputBuffer != null) {
-				OpenTextInputBar(game.chatInInputBuffer);
-				game.chatInInputBuffer = null;
+			if (chatInInputBuffer != null) {
+				OpenTextInputBar(chatInInputBuffer);
+				chatInInputBuffer = null;
 			}
 		}
 		
@@ -156,14 +155,17 @@ namespace ClassicalSharp.Gui.Screens {
 		}
 		
 		void RenderRecentChat(DateTime now, double delta) {
-			int[] metadata = (int[])Metadata;
 			for (int i = 0; i < normalChat.Textures.Length; i++) {
 				Texture texture = normalChat.Textures[i];
-				if (!texture.IsValid || metadata[i] == -1) continue;
+				int logIdx = chatIndex + i;
 				
-				DateTime received = game.Chat.Log[metadata[i]].Received;
-				if ((now - received).TotalSeconds <= 10)
+				if (!texture.IsValid) continue;
+				if (logIdx < 0 || logIdx >= game.Chat.Log.Count) continue;
+				
+				DateTime received = game.Chat.Log[logIdx].Received;
+				if ((now - received).TotalSeconds <= 10) {
 					texture.Render(gfx);
+				}
 			}
 		}
 		
@@ -198,15 +200,17 @@ namespace ClassicalSharp.Gui.Screens {
 			int height = InputUsedHeight;
 			if (force || height != inputOldHeight) {
 				clientStatus.YOffset = Math.Max(hud.BottomOffset + 15, height);
-				clientStatus.CalculatePosition();
+				clientStatus.Reposition();
 				
 				normalChat.YOffset = clientStatus.YOffset + clientStatus.GetUsedHeight();
-				normalChat.CalculatePosition();
+				normalChat.Reposition();
 				inputOldHeight = height;
 			}
 		}
 
 		void ColourCodeChanged(object sender, ColourCodeEventArgs e) {
+			if (gfx.LostContext) return;
+			
 			altText.UpdateColours();
 			Recreate(normalChat, e.Code); Recreate(status, e.Code);
 			Recreate(bottomRight, e.Code); Recreate(clientStatus, e.Code);
@@ -228,50 +232,60 @@ namespace ClassicalSharp.Gui.Screens {
 
 		void ChatReceived(object sender, ChatEventArgs e) {
 			MessageType type = e.Type;
+			if (gfx.LostContext) return;
+			
 			if (type == MessageType.Normal) {
 				chatIndex++;
 				if (game.ChatLines == 0) return;
+				
 				List<ChatLine> chat = game.Chat.Log;
 				normalChat.PushUpAndReplaceLast(chat[chatIndex + chatLines - 1].Text);
-				
-				int[] metadata = (int[])Metadata;
-				for (int i = 0; i < chatLines - 1; i++)
-					metadata[i] = metadata[i + 1];
-				metadata[chatLines - 1] = chatIndex + chatLines - 1;
+
 			} else if (type >= MessageType.Status1 && type <= MessageType.Status3) {
 				status.SetText(2 + (int)(type - MessageType.Status1), e.Text);
 			} else if (type >= MessageType.BottomRight1 && type <= MessageType.BottomRight3) {
 				bottomRight.SetText(2 - (int)(type - MessageType.BottomRight1), e.Text);
 			} else if (type == MessageType.Announcement) {
 				announcement.SetText(e.Text);
-			} else if (type >= MessageType.ClientStatus1 && type <= MessageType.ClientStatus6) {
+			} else if (type >= MessageType.ClientStatus1 && type <= MessageType.ClientStatus3) {
 				clientStatus.SetText((int)(type - MessageType.ClientStatus1), e.Text);
 				UpdateChatYOffset(true);
 			}
 		}
 
 		public override void Dispose() {
-			if (HandlesAllInput) {
-				game.chatInInputBuffer = input.Text.ToString();
-				game.CursorVisible = false;
-			} else {
-				game.chatInInputBuffer = null;
-			}
+			ContextLost();
 			chatFont.Dispose();
 			chatUrlFont.Dispose();
 			announcementFont.Dispose();
 			
+			game.Events.ChatReceived -= ChatReceived;
+			game.Events.ChatFontChanged -= ChatFontChanged;
+			game.Events.ColourCodeChanged -= ColourCodeChanged;
+			game.Graphics.ContextLost -= ContextLost;
+			game.Graphics.ContextRecreated -= ContextRecreated;
+		}
+		
+		protected override void ContextLost() {
+			if (HandlesAllInput) {
+				chatInInputBuffer = input.Text.ToString();
+				game.CursorVisible = false;
+			} else {
+				chatInInputBuffer = null;
+			}
+
 			normalChat.Dispose();
-			input.DisposeFully();
+			input.Dispose();
 			altText.Dispose();
 			status.Dispose();
 			bottomRight.Dispose();
 			clientStatus.Dispose();
 			announcement.Dispose();
-			
-			game.Events.ChatReceived -= ChatReceived;
-			game.Events.ChatFontChanged -= ChatFontChanged;
-			game.Events.ColourCodeChanged -= ColourCodeChanged;
+		}
+		
+		protected override void ContextRecreated() {
+			ConstructWidgets();
+			SetInitialMessages();
 		}
 		
 		void ChatFontChanged(object sender, EventArgs e) {
@@ -289,14 +303,10 @@ namespace ClassicalSharp.Gui.Screens {
 		void ResetChat() {
 			normalChat.Dispose();
 			List<ChatLine> chat = game.Chat.Log;
-			int[] metadata = (int[])Metadata;
-			for (int i = 0; i < chatLines; i++)
-				metadata[i] = -1;
 			
 			for (int i = chatIndex; i < chatIndex + chatLines; i++) {
 				if (i >= 0 && i < chat.Count) {
 					normalChat.PushUpAndReplaceLast(chat[i].Text);
-					metadata[i - chatIndex] = i;
 				}
 			}
 		}
@@ -316,12 +326,12 @@ namespace ClassicalSharp.Gui.Screens {
 		public void OpenTextInputBar(string initialText) {
 			game.CursorVisible = true;
 			suppressNextPress = true;
-			HandlesAllInput = true;
+			SetHandlesAllInput(true);
 			game.Keyboard.KeyRepeat = true;
 			
 			input.Text.Clear();
 			input.Text.Append(0, initialText);
-			input.Init();
+			input.Recreate();
 		}
 		
 		public void AppendTextToInput(string text) {
@@ -331,11 +341,9 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		public override bool HandlesKeyDown(Key key) {
 			suppressNextPress = false;
-
 			if (HandlesAllInput) { // text input bar
-				if (key == game.Mapping(KeyBind.SendChat) || key == Key.KeypadEnter
-				   || key == game.Mapping(KeyBind.PauseOrExit)) {
-					HandlesAllInput = false;
+				if (key == game.Mapping(KeyBind.SendChat) || key == Key.KeypadEnter || key == game.Mapping(KeyBind.PauseOrExit)) {
+					SetHandlesAllInput(false);
 					game.CursorVisible = false;
 					game.Camera.RegrabMouse();
 					game.Keyboard.KeyRepeat = false;
@@ -345,17 +353,16 @@ namespace ClassicalSharp.Gui.Screens {
 					input.EnterInput();
 					altText.SetActive(false);
 					
-					chatIndex = game.Chat.Log.Count - chatLines;
-					ScrollHistory();
+					// Do we need to move all chat down?
+					int resetIndex = game.Chat.Log.Count - chatLines;
+					if (chatIndex != resetIndex) {
+						chatIndex = ClampIndex(resetIndex);
+						ResetChat();
+					}
 				} else if (key == Key.PageUp) {
-					chatIndex -= chatLines;
-					ScrollHistory();
+					ScrollHistoryBy(-chatLines);
 				} else if (key == Key.PageDown) {
-					chatIndex += chatLines;
-					ScrollHistory();
-				} else if (game.Server.SupportsFullCP437 &&
-				          key == game.Input.Keys[KeyBind.ExtInput]) {
-					altText.SetActive(!altText.Active);
+					ScrollHistoryBy(chatLines);
 				} else {
 					input.HandlesKeyDown(key);
 					UpdateAltTextY();
@@ -373,10 +380,20 @@ namespace ClassicalSharp.Gui.Screens {
 			return true;
 		}
 		
-		public override bool HandlesMouseScroll(int delta) {
+		public override bool HandlesKeyUp(Key key) {
 			if (!HandlesAllInput) return false;
-			chatIndex -= delta;
-			ScrollHistory();
+			
+			if (game.Server.SupportsFullCP437 && key == game.Input.Keys[KeyBind.ExtInput]) {
+				if (game.window.Focused) altText.SetActive(!altText.Active);
+			}
+			return true;
+		}
+		
+		float chatAcc;
+		public override bool HandlesMouseScroll(float delta) {
+			if (!HandlesAllInput) return false;
+			int steps = Utils.AccumulateWheelDelta(ref chatAcc, delta);
+			ScrollHistoryBy(-steps);
 			return true;
 		}
 		
@@ -406,38 +423,46 @@ namespace ClassicalSharp.Gui.Screens {
 			string url = Utils.StripColours(text);
 			
 			if (Utils.IsUrlPrefix(url, 0)) {
-				WarningScreen warning = new WarningScreen(game, false, false);
-				warning.Metadata = url;
-				warning.SetHandlers(OpenUrl, AppendUrl, null);
+				WarningOverlay overlay = new WarningOverlay(game, false, false);
+				overlay.Metadata = url;
+				overlay.SetHandlers(OpenUrl, AppendUrl);
+				overlay.lines[0] = "&eAre you sure you want to open this link?";
 				
-				warning.SetTextData(
-					"&eAre you sure you want to open this link?",
-					url, "Be careful - links from strangers may be websites that",
-					" have viruses, or things you may not want to open/see.");
-				game.Gui.ShowWarning(warning);
+				overlay.lines[1] = url;
+				overlay.lines[2] = "Be careful - links from strangers may be websites that";
+				overlay.lines[3] = " have viruses, or things you may not want to open/see.";
+				game.Gui.ShowOverlay(overlay);
 			} else if (game.ClickableChat) {
 				input.Append(text);
 			}
 			return true;
 		}
 		
-		void OpenUrl(WarningScreen screen, bool always) {
+		void OpenUrl(Overlay urlOverlay, bool always) {
 			try {
-				Process.Start((string)screen.Metadata);
+				Process.Start(urlOverlay.Metadata);
 			} catch (Exception ex) {
 				ErrorHandler.LogError("ChatScreen.OpenUrl", ex);
 			}
 		}
 		
-		void AppendUrl(WarningScreen screen, bool always) {
+		void AppendUrl(Overlay urlOverlay, bool always) {
 			if (!game.ClickableChat) return;
-			input.Append((string)screen.Metadata);
+			input.Append(urlOverlay.Metadata);
 		}
 		
-		void ScrollHistory() {
+		int ClampIndex(int index) {
 			int maxIndex = game.Chat.Log.Count - chatLines;
 			int minIndex = Math.Min(0, maxIndex);
-			Utils.Clamp(ref chatIndex, minIndex, maxIndex);
+			Utils.Clamp(ref index, minIndex, maxIndex);
+			return index;
+		}
+		
+		void ScrollHistoryBy(int delta) {
+			int newIndex = ClampIndex(chatIndex + delta);
+			if (newIndex == chatIndex) return;
+			
+			chatIndex = newIndex;
 			ResetChat();
 		}
 		
@@ -449,7 +474,12 @@ namespace ClassicalSharp.Gui.Screens {
 			int height = Math.Max(input.Height + input.YOffset, hud.BottomOffset);
 			height += input.YOffset;
 			altText.texture.Y1 = game.Height - (height + altText.texture.Height);
-			altText.Y = altText.texture.Y1;
+			altText.Y = altText.texture.Y;
+		}
+		
+		void SetHandlesAllInput(bool handles) {
+			HandlesAllInput = handles;
+			game.Gui.hudScreen.HandlesAllInput = handles;
 		}
 	}
 }

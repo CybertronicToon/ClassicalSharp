@@ -9,69 +9,79 @@ namespace ClassicalSharp.Gui.Screens {
 		
 		public KeyBindingsScreen(Game game) : base(game) { }
 		
-		Font keyFont;
 		static string[] keyNames;
-		protected string[] leftDesc, rightDesc;
-		protected KeyBind[] left, right;
+		protected string[] desc;
+		protected KeyBind[] binds;
+		protected int leftLength = -1;
 		
-		protected int btnDistance = 45, btnWidth = 260, btnHeight = 35;
+		protected int btnDistance = 50, btnWidth = 260;
 		protected string title = "Controls";
 		protected int index;
-		protected Action<Game, Widget> leftPage, rightPage;
+		protected SimpleClickHandler leftPage, rightPage;
 		
 		public override void Init() {
 			titleFont = new Font(game.FontName, 16, FontStyle.Bold);
-			keyFont = new Font(game.FontName, 16, FontStyle.Bold);
-			regularFont = new Font(game.FontName, 16, FontStyle.Italic);
+			regularFont = new Font(game.FontName, 16);
+			base.Init();
 			
 			if (keyNames == null)
 				keyNames = Enum.GetNames(typeof(Key));
 		}
 
-		protected void MakeWidgets(int y) {
+		protected void MakeWidgets(int y, int arrowsY) {
+			index = 0;
 			int origin = y;
 			MakeOthers();
 			
-			if (right == null) {
-				for (int i = 0; i < left.Length; i++)
+			int i = 0;
+			if (leftLength == -1) {
+				for (i = 0; i < binds.Length; i++)
 					Make(i, 0, ref y);
 			} else {
-				for (int i = 0; i < left.Length; i++)
+				for (i = 0; i < leftLength; i++)
 					Make(i, -btnWidth / 2 - 5, ref y);
 				
 				y = origin;
-				for (int i = 0; i < right.Length; i++)
-					Make(i + left.Length, btnWidth / 2 + 5, ref y);
+				for (; i < binds.Length; i++)
+					Make(i, btnWidth / 2 + 5, ref y);
 			}
-			MakePages(origin);
+			MakePages(arrowsY);
 		}
 		
 		void MakeOthers() {
-			widgets[index++] = TextWidget.Create(game, title, keyFont)
+			widgets[index++] = TextWidget.Create(game, title, titleFont)
 				.SetLocation(Anchor.Centre, Anchor.Centre, 0, -180);
-			if (game.ClassicMode) {
-				widgets[index++] = MakeBack(false, titleFont,
-				                            (g, w) => g.Gui.SetNewScreen(new ClassicOptionsScreen(g)));
+			
+			if (game.UseClassicOptions) {
+				widgets[index++] = MakeBack(false, titleFont, SwitchClassicOptions);
 			} else {
-				widgets[index++] = MakeBack("Back to menu", 5, titleFont,
-				                            (g, w) => g.Gui.SetNewScreen(new OptionsGroupScreen(g)));
+				widgets[index++] = MakeBack(false, titleFont, SwitchOptions);
 			}
 		}
 		
-		void MakePages(int origin) {
+		static void SwitchClassicOptions(Game g, Widget w) { g.Gui.SetNewScreen(new ClassicOptionsScreen(g)); }
+		protected static void SwitchClassic(Game g, Widget w) { g.Gui.SetNewScreen(new ClassicKeyBindingsScreen(g)); }
+		protected static void SwitchClassicHacks(Game g, Widget w) { g.Gui.SetNewScreen(new ClassicHacksKeyBindingsScreen(g)); }
+		protected static void SwitchNormal(Game g, Widget w) { g.Gui.SetNewScreen(new NormalKeyBindingsScreen(g)); }
+		protected static void SwitchHacks(Game g, Widget w) { g.Gui.SetNewScreen(new HacksKeyBindingsScreen(g)); }
+		protected static void SwitchOther(Game g, Widget w) { g.Gui.SetNewScreen(new OtherKeyBindingsScreen(g)); }
+		protected static void SwitchMouse(Game g, Widget w) { g.Gui.SetNewScreen(new MouseKeyBindingsScreen(g)); }
+		
+		void MakePages(int btnY) {
 			if (leftPage == null && rightPage == null) return;
-			int btnY = origin + btnDistance * (left.Length / 2);
-			widgets[index++] = ButtonWidget.Create(game, btnHeight, btnHeight, "<", keyFont, LeftOnly(leftPage))
+			
+			widgets[index++] = ButtonWidget.Create(game, 40, "<", titleFont, LeftOnly(leftPage))
 				.SetLocation(Anchor.Centre, Anchor.Centre, -btnWidth - 35, btnY);
-			widgets[index++] = ButtonWidget.Create(game, btnHeight, btnHeight, ">", keyFont, LeftOnly(rightPage))
+			widgets[index++] = ButtonWidget.Create(game, 40, ">", titleFont, LeftOnly(rightPage))
 				.SetLocation(Anchor.Centre, Anchor.Centre, btnWidth + 35, btnY);
-			if (leftPage == null) widgets[index - 2].Disabled = true;
-			if (rightPage == null) widgets[index - 1].Disabled = true;
+			
+			widgets[index - 2].Disabled = leftPage == null;
+			widgets[index - 1].Disabled = rightPage == null;
 		}
 		
 		void Make(int i, int x, ref int y) {
 			string text = ButtonText(i);
-			widgets[index++] = ButtonWidget.Create(game, btnWidth, btnHeight, text, keyFont, OnBindingClick)				
+			widgets[index++] = ButtonWidget.Create(game, btnWidth, text, titleFont, OnBindingClick)				
 				.SetLocation(Anchor.Centre, Anchor.Centre, x, y);
 			y += btnDistance;
 		}
@@ -82,51 +92,39 @@ namespace ClassicalSharp.Gui.Screens {
 			int index = 0;
 			if (btn == MouseButton.Right && (curWidget == null || curWidget == widget)) {
 				curWidget = (ButtonWidget)widget;
-				index = Array.IndexOf<Widget>(widgets, curWidget) - 2;
-				KeyBind mapping = Get(index, left, right);
+				index = IndexOfWidget(curWidget) - 2;
+				KeyBind mapping = binds[index];
 				HandlesKeyDown(game.Input.Keys.GetDefault(mapping));
 			}
 			if (btn != MouseButton.Left) return;
 			
 			if (curWidget != null) {
-				index = Array.IndexOf<Widget>(widgets, curWidget) - 2;
+				index = IndexOfWidget(curWidget) - 2;
 				curWidget.SetText(ButtonText(index));
 				curWidget = null;
 			}
 			
-			index = Array.IndexOf<Widget>(widgets, widget) - 2;
+			index = IndexOfWidget(widget) - 2;
 			string text = ButtonText(index);
 			curWidget = (ButtonWidget)widget;
 			curWidget.SetText("> " + text + " <");
 		}
 		
 		string ButtonText(int i) {
-			KeyBind mapping = Get(i, left, right);
-			Key key = game.Input.Keys[mapping];
-			string desc = Get(i, leftDesc, rightDesc);
-			return desc + ": " + keyNames[(int)key];
+			Key key = game.Input.Keys[binds[i]];
+			return desc[i] + ": " + keyNames[(int)key];
 		}
 		
 		public override bool HandlesKeyDown(Key key) {
 			if (key == Key.Escape) {
 				game.Gui.SetNewScreen(null);
 			} else if (curWidget != null) {
-				int index = Array.IndexOf<Widget>(widgets, curWidget) - 2;
-				KeyBind mapping = Get(index, left, right);
-				game.Input.Keys[mapping] = key;			
+				int index = IndexOfWidget(curWidget) - 2;
+				game.Input.Keys[binds[index]] = key;
 				curWidget.SetText(ButtonText(index));
 				curWidget = null;
 			}
 			return true;
-		}
-		
-		T Get<T>(int index, T[] a, T[] b) {
-			return index < a.Length ? a[index] : b[index - a.Length];
-		}
-		
-		public override void Dispose() {
-			keyFont.Dispose();
-			base.Dispose();
 		}
 	}
 }

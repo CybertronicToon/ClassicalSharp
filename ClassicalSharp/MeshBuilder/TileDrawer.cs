@@ -1,9 +1,15 @@
 ﻿// Copyright 2014-2017 ClassicalSharp | Licensed under BSD-3
 using System;
-using System.Runtime.InteropServices;
+using ClassicalSharp.Generator;
 using ClassicalSharp.GraphicsAPI;
 using ClassicalSharp.Textures;
 using OpenTK;
+
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
 
 namespace ClassicalSharp {
 	
@@ -13,10 +19,6 @@ namespace ClassicalSharp {
 		protected TerrainAtlas1D atlas;
 		protected int arraysCount = 0;
 		protected bool fullBright, tinted;
-		protected int lightFlags;
-
-		protected Vector3 minBB, maxBB;		
-		protected bool isTranslucent;
 		protected float invVerElementSize;
 		protected int elementsPerAtlas1D;
 		
@@ -38,91 +40,45 @@ namespace ClassicalSharp {
 			game.Events.TerrainAtlasChanged -= TerrainAtlasChanged;
 		}
 		
-		[StructLayout(LayoutKind.Sequential)]
-		protected struct DrawInfoFaceData {
-			public int left, right, front, back, bottom, top;
-		}
-		
 		protected class DrawInfo {
 			public VertexP3fT2fC4b[] vertices;
-			public DrawInfoFaceData vIndex, sIndex, vCount;
-			public int iCount, spriteCount;
+			public int[] vIndex = new int[6], vCount = new int[6];
+			public int spriteCount, sIndex, sAdvance;
+			
+			public int VerticesCount() {
+				int count = spriteCount;
+				for (int i = 0; i < vCount.Length; i++) { count += vCount[i]; }
+				return count;
+			}
 			
 			public void ExpandToCapacity() {
-				int vertCount = iCount / 6 * 4;
-				if (vertices == null || (vertCount + 2) > vertices.Length) {
-					vertices = new VertexP3fT2fC4b[vertCount + 2]; 
+				int vertsCount = VerticesCount();
+				if (vertices == null || (vertsCount + 2) > vertices.Length) {
+					vertices = new VertexP3fT2fC4b[vertsCount + 2];
 					// ensure buffer is up to 64 bits aligned for last element
-				}	
+				}
+				sIndex = 0;
+				sAdvance = spriteCount / 4;
 				
-				// Adjust for the fact that we group all vertices by face.
-				sIndex.left = (spriteCount / 6) * 0;
-				sIndex.right = (spriteCount / 6) * 1;
-				sIndex.front = (spriteCount / 6) * 2;
-				sIndex.back = (spriteCount / 6) * 3;
-				
-				vIndex.left = (spriteCount / 6) * 4;
-				vIndex.right = vIndex.left + vCount.left / 6 * 4;
-				vIndex.front = vIndex.right + vCount.right / 6 * 4;
-				vIndex.back = vIndex.front + vCount.front / 6 * 4;
-				vIndex.bottom = vIndex.back + vCount.back / 6 * 4;
-				vIndex.top = vIndex.bottom + vCount.bottom / 6 * 4;
+				vIndex[Side.Left]   = spriteCount;
+				vIndex[Side.Right]  = vIndex[Side.Left]   + vCount[Side.Left];
+				vIndex[Side.Front]  = vIndex[Side.Right]  + vCount[Side.Right];
+				vIndex[Side.Back]   = vIndex[Side.Front]  + vCount[Side.Front];
+				vIndex[Side.Bottom] = vIndex[Side.Back]   + vCount[Side.Back];
+				vIndex[Side.Top]    = vIndex[Side.Bottom] + vCount[Side.Bottom];
 			}
 			
 			public void ResetState() {
-				iCount = 0; spriteCount = 0;
-				vIndex = new DrawInfoFaceData();
-				vCount = new DrawInfoFaceData();
-				sIndex = new DrawInfoFaceData();
+				spriteCount = 0; sIndex = 0; sAdvance = 0;
+				for (int i = 0; i < Side.Sides; i++) {
+					vIndex[i] = 0; vCount[i] = 0;
+				}
 			}
-		}		
-
-		void RenderTile(int index) {
-			if (info.Draw[curBlock] == DrawType.Sprite) {
-				fullBright = info.FullBright[curBlock];
-				tinted = info.Tinted[curBlock];
-				int count = counts[index + Side.Top];
-				if (count != 0) DrawSprite(count);
-				return;
-			}
-			
-			int leftCount = counts[index++], rightCount = counts[index++],
-			frontCount = counts[index++], backCount = counts[index++],
-			bottomCount = counts[index++], topCount = counts[index++];
-			if (leftCount == 0 && rightCount == 0 && frontCount == 0 &&
-			   backCount == 0 && bottomCount == 0 && topCount == 0) return;
-			
-			fullBright = info.FullBright[curBlock];
-			isTranslucent = info.Draw[curBlock] == DrawType.Translucent;
-			lightFlags = info.LightOffset[curBlock];
-			tinted = info.Tinted[curBlock];
-			
-			Vector3 min = info.MinBB[curBlock], max = info.MaxBB[curBlock];
-			x1 = X + min.X; y1 = Y + min.Y; z1 = Z + min.Z;
-			x2 = X + max.X; y2 = Y + max.Y; z2 = Z + max.Z;
-
-			if (curBlock >= Block.Water && curBlock <= Block.StillLava) {
-				x1 -= 0.1f/16; x2 -= 0.1f/16f; 
-				z1 -= 0.1f/16f; z2 -= 0.1f/16f;
-				y1 -= 1.5f/16; y2 -= 1.5f/16;
-			} else if (isTranslucent && info.Collide[curBlock] != CollideType.Solid) {
-				x1 += 0.1f/16; x2 += 0.1f/16f; 
-				z1 += 0.1f/16f; z2 += 0.1f/16f;
-				y1 -= 0.1f/16; y2 -= 0.1f/16f;
-			}
-			
-			this.minBB = min; this.maxBB = max;
-			minBB.Y = 1 - minBB.Y; maxBB.Y = 1 - maxBB.Y;
-			
-			if (leftCount != 0) DrawLeftFace(leftCount);
-			if (rightCount != 0) DrawRightFace(rightCount);
-			if (frontCount != 0) DrawFrontFace(frontCount);
-			if (backCount != 0) DrawBackFace(backCount);
-			if (bottomCount != 0) DrawBottomFace(bottomCount);
-			if (topCount != 0) DrawTopFace(topCount);
 		}
+
+		protected abstract void RenderTile(int index);
 		
-		void PreStretchTiles(int x1, int y1, int z1) {
+		protected virtual void PreStretchTiles(int x1, int y1, int z1) {
 			atlas = game.TerrainAtlas1D;
 			invVerElementSize = atlas.invElementSize;
 			elementsPerAtlas1D = atlas.elementsPerAtlas1D;
@@ -143,76 +99,87 @@ namespace ClassicalSharp {
 			}
 		}
 		
-		void PostStretchTiles(int x1, int y1, int z1) {
+		protected virtual void PostStretchTiles(int x1, int y1, int z1) {
 			for (int i = 0; i < normalParts.Length; i++) {
 				normalParts[i].ExpandToCapacity();
 				translucentParts[i].ExpandToCapacity();
 			}
 		}
 		
-		void AddSpriteVertices(byte block) {
-			int i = atlas.Get1DIndex(info.GetTextureLoc(block, Side.Left));
+		void AddSpriteVertices(BlockID block) {
+			int i = atlas.Get1DIndex(BlockInfo.GetTextureLoc(block, Side.Left));
 			DrawInfo part = normalParts[i];
-			part.spriteCount += 6 * 4;
-			part.iCount += 6 * 4;
+			part.spriteCount += 4 * 4;
 		}
 		
-		unsafe void AddVertices(byte block, int count, int face) {
-			int i = atlas.Get1DIndex(info.GetTextureLoc(block, face));
-			DrawInfo part = info.Draw[block] == DrawType.Translucent ? translucentParts[i] : normalParts[i];
-			part.iCount += 6;
-
-			DrawInfoFaceData counts = part.vCount;
-			*(&counts.left + face) += 6;
-			part.vCount = counts;
+		void AddVertices(BlockID block, int face) {
+			int i = atlas.Get1DIndex(BlockInfo.GetTextureLoc(block, face));
+			DrawInfo part = BlockInfo.Draw[block] == DrawType.Translucent ? translucentParts[i] : normalParts[i];
+			part.vCount[face] += 4;
 		}
 		
-		protected abstract void DrawLeftFace(int count);
-		protected abstract void DrawRightFace(int count);
-		protected abstract void DrawFrontFace(int count);
-		protected abstract void DrawBackFace(int count);
-		protected abstract void DrawTopFace(int count);
-		protected abstract void DrawBottomFace(int count);	
-		
-		void DrawSprite(int count) {
-			int texId = info.textures[curBlock * Side.Sides + Side.Right];
+		static JavaRandom spriteRng = new JavaRandom(0);
+		protected virtual void DrawSprite(int count) {
+			int texId = BlockInfo.textures[curBlock * Side.Sides + Side.Right];
 			int i = texId / elementsPerAtlas1D;
 			float vOrigin = (texId % elementsPerAtlas1D) * invVerElementSize;
-			const float blockHeight = 1;
 			
+			float x1 = X + 2.50f/16, y1 = Y,     z1 = Z + 2.5f/16;
+			float x2 = X + 13.5f/16, y2 = Y + 1, z2 = Z + 13.5f/16;
 			const float u1 = 0, u2 = 15.99f/16f;
 			float v1 = vOrigin, v2 = vOrigin + invVerElementSize * 15.99f/16f;
+			
+			byte offsetType = BlockInfo.SpriteOffset[curBlock];
+			if (offsetType >= 6 && offsetType <= 7) {
+				spriteRng.SetSeed((X + 1217 * Z) & 0x7fffffff);
+				float valX = spriteRng.Next(-3, 3 + 1) / 16.0f;
+				float valY = spriteRng.Next(0,  3 + 1) / 16.0f;
+				float valZ = spriteRng.Next(-3, 3 + 1) / 16.0f;
+				
+				const float stretch = 1.7f / 16.0f;
+				x1 += valX - stretch; x2 += valX + stretch;
+				z1 += valZ - stretch; z2 += valZ + stretch;
+				if (offsetType == 7) { y1 -= valY; y2 -= valY; }
+			}
+			
 			DrawInfo part = normalParts[i];
-			int col = fullBright ? FastColour.WhitePacked : lighting.LightCol_Sprite_Fast(X, Y, Z);
+			int col = fullBright ? FastColour.WhitePacked : light.LightCol_Sprite_Fast(X, Y, Z);
 			if (tinted) col = TintBlock(curBlock, col);
+			VertexP3fT2fC4b v; v.Colour = col;
 			
 			// Draw Z axis
-			part.vertices[part.sIndex.left++] = new VertexP3fT2fC4b(X + 2.50f/16, Y, Z + 2.5f/16, u2, v2, col);
-			part.vertices[part.sIndex.left++] = new VertexP3fT2fC4b(X + 2.50f/16, Y + blockHeight, Z + 2.5f/16, u2, v1, col);
-			part.vertices[part.sIndex.left++] = new VertexP3fT2fC4b(X + 13.5f/16, Y + blockHeight, Z + 13.5f/16, u1, v1, col);
-			part.vertices[part.sIndex.left++] = new VertexP3fT2fC4b(X + 13.5f/16, Y, Z + 13.5f/16, u1, v2, col);
+			int index = part.sIndex;
+			v.X = x1; v.Y = y1; v.Z = z1; v.U = u2; v.V = v2; part.vertices[index + 0] = v;
+			          v.Y = y2;                     v.V = v1; part.vertices[index + 1] = v;
+			v.X = x2;           v.Z = z2; v.U = u1;           part.vertices[index + 2] = v;
+			          v.Y = y1;                     v.V = v2; part.vertices[index + 3] = v;
 			
 			// Draw Z axis mirrored
-			part.vertices[part.sIndex.right++] = new VertexP3fT2fC4b(X + 13.5f/16, Y, Z + 13.5f/16, u2, v2, col);
-			part.vertices[part.sIndex.right++] = new VertexP3fT2fC4b(X + 13.5f/16, Y + blockHeight, Z + 13.5f/16, u2, v1, col);
-			part.vertices[part.sIndex.right++] = new VertexP3fT2fC4b(X + 2.50f/16, Y + blockHeight, Z + 2.5f/16, u1, v1, col);
-			part.vertices[part.sIndex.right++] = new VertexP3fT2fC4b(X + 2.50f/16, Y, Z + 2.5f/16, u1, v2, col);
+			index += part.sAdvance;
+			v.X = x2; v.Y = y1; v.Z = z2; v.U = u2;           part.vertices[index + 0] = v;
+			          v.Y = y2;                     v.V = v1; part.vertices[index + 1] = v;
+			v.X = x1;           v.Z = z1; v.U = u1;           part.vertices[index + 2] = v;
+			          v.Y = y1;                     v.V = v2; part.vertices[index + 3] = v;
 
 			// Draw X axis
-			part.vertices[part.sIndex.front++] = new VertexP3fT2fC4b(X + 2.50f/16, Y, Z + 13.5f/16, u2, v2, col);
-			part.vertices[part.sIndex.front++] = new VertexP3fT2fC4b(X + 2.50f/16, Y + blockHeight, Z + 13.5f/16, u2, v1, col);
-			part.vertices[part.sIndex.front++] = new VertexP3fT2fC4b(X + 13.5f/16, Y + blockHeight, Z + 2.5f/16, u1, v1, col);
-			part.vertices[part.sIndex.front++] = new VertexP3fT2fC4b(X + 13.5f/16, Y, Z + 2.5f/16, u1, v2, col);
+			index += part.sAdvance;
+			v.X = x1; v.Y = y1; v.Z = z2; v.U = u2;           part.vertices[index + 0] = v;
+			          v.Y = y2;                     v.V = v1; part.vertices[index + 1] = v;
+			v.X = x2;           v.Z = z1; v.U = u1;           part.vertices[index + 2] = v;
+			          v.Y = y1;                     v.V = v2; part.vertices[index + 3] = v;
 			
 			// Draw X axis mirrored
-			part.vertices[part.sIndex.back++] = new VertexP3fT2fC4b(X + 13.5f/16, Y, Z + 2.5f/16, u2, v2, col);
-			part.vertices[part.sIndex.back++] = new VertexP3fT2fC4b(X + 13.5f/16, Y + blockHeight, Z + 2.5f/16, u2, v1, col);
-			part.vertices[part.sIndex.back++] = new VertexP3fT2fC4b(X + 2.50f/16, Y + blockHeight, Z + 13.5f/16, u1, v1, col);
-			part.vertices[part.sIndex.back++] = new VertexP3fT2fC4b(X + 2.50f/16, Y, Z + 13.5f/16, u1, v2, col);
+			index += part.sAdvance;
+			v.X = x2; v.Y = y1; v.Z = z1; v.U = u2;           part.vertices[index + 0] = v;
+			          v.Y = y2;                     v.V = v1; part.vertices[index + 1] = v;
+			v.X = x1;           v.Z = z2; v.U = u1;           part.vertices[index + 2] = v;
+			          v.Y = y1;                     v.V = v2; part.vertices[index + 3] = v;
+			
+			part.sIndex += 4;
 		}
 		
-		protected int TintBlock(byte curBlock, int col) {
-			FastColour fogCol = info.FogColour[curBlock];
+		protected int TintBlock(BlockID curBlock, int col) {
+			FastColour fogCol = BlockInfo.FogColour[curBlock];
 			FastColour newCol = FastColour.Unpack(col);
 			newCol *= fogCol;
 			return newCol.Pack();

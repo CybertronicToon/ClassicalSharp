@@ -7,6 +7,12 @@ using ClassicalSharp.Gui.Widgets;
 using ClassicalSharp.Textures;
 using OpenTK.Input;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp.Gui.Screens {
 	public sealed class LoadLevelScreen : FilesScreen {
 		
@@ -20,7 +26,7 @@ namespace ClassicalSharp.Gui.Screens {
 			for (int i = 0; i < rawFiles.Length; i++) {
 				string file = rawFiles[i];
 				if (file.EndsWith(".cw") || file.EndsWith(".dat")
-				   || file.EndsWith(".fcm") || file.EndsWith(".lvl")) {
+				    || file.EndsWith(".fcm") || file.EndsWith(".lvl")) {
 					count++;
 				} else {
 					rawFiles[i] = null;
@@ -60,16 +66,24 @@ namespace ClassicalSharp.Gui.Screens {
 				using (FileStream fs = File.OpenRead(path)) {
 					int width, height, length;
 					game.World.Reset();
+					game.WorldEvents.RaiseOnNewMap();
+					
 					if (game.World.TextureUrl != null) {
 						TexturePack.ExtractDefault(game);
 						game.World.TextureUrl = null;
 					}
-					game.BlockInfo.Reset(game);
+					BlockInfo.Reset(game);
+					game.Inventory.SetDefaultMapping();
 					
 					byte[] blocks = importer.Load(fs, game, out width, out height, out length);
+					#if USE16_BIT
+					game.World.SetNewMap(Utils.UInt8sToUInt16s(blocks), width, height, length);
+					#else
 					game.World.SetNewMap(blocks, width, height, length);
+					#endif
+					
 					game.WorldEvents.RaiseOnNewMapLoaded();
-					if (game.AllowServerTextures && game.World.TextureUrl != null)
+					if (game.UseServerTextures && game.World.TextureUrl != null)
 						game.Server.RetrieveTexturePack(game.World.TextureUrl);
 					
 					LocalPlayer p = game.LocalPlayer;
@@ -79,7 +93,7 @@ namespace ClassicalSharp.Gui.Screens {
 			} catch (Exception ex) {
 				ErrorHandler.LogError("loading map", ex);
 				string file = Path.GetFileName(path);
-				game.Chat.Add("&e/client loadmap: Failed to load map \"" + file + "\"");
+				game.Chat.Add("&eFailed to load map \"" + file + "\"");
 			}
 		}
 	}

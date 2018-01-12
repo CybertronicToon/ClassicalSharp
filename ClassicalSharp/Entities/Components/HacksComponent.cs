@@ -9,18 +9,16 @@ namespace ClassicalSharp.Entities {
 	public sealed class HacksComponent {
 		
 		Game game;
-		Entity entity;
 		public HacksComponent(Game game, Entity entity) {
 			this.game = game;
-			this.entity = entity;
 		}
 		
 		public byte UserType;
 		
 		/// <summary> The speed that the player move at, relative to normal speed,
 		/// when the 'speeding' key binding is held down. </summary>
-		public float SpeedMultiplier = 10;		
-				
+		public float SpeedMultiplier = 10;
+		
 		/// <summary> Whether blocks that the player places that intersect themselves
 		/// should cause the player to be pushed back in the opposite direction of the placed block. </summary>
 		public bool PushbackPlacing;
@@ -44,18 +42,22 @@ namespace ClassicalSharp.Entities {
 		/// <summary> Whether the player is allowed to pass through all blocks. </summary>
 		public bool CanNoclip = true;
 		/// <summary> Whether the player is allowed to use pushback block placing. </summary>
-		public bool CanPushbackBlocks = true;		
+		public bool CanPushbackBlocks = true;
 		/// <summary> Whether the player is allowed to see all entity name tags. </summary>
-		public bool CanSeeAllNames = true;					
+		public bool CanSeeAllNames = true;
 		/// <summary> Whether the player is allowed to double jump. </summary>
-		public bool CanDoubleJump = true;	
-		/// <summary> Maximum speed the entity can move at horizontally when CanSpeed is false. </summary>
-		public float MaxSpeedMultiplier = 1;
+		public bool CanDoubleJump = true;
+		/// <summary> Whether the player can be pushed by other players. </summary>
+		public bool CanBePushed = true;
+		/// <summary> Base speed multiplier entity moves at horizontally. </summary>
+		public float BaseHorSpeed = 1;
+		/// <summary> Amount of jumps the player can perform. </summary>
+		public int MaxJumps = 1;
 		
 		/// <summary> Whether the player should slide after letting go of movement buttons in noclip.  </summary>
-		public bool NoclipSlide = true;		
+		public bool NoclipSlide = true;
 		/// <summary> Whether the player has allowed the usage of fast double jumping abilities. </summary>
-		public bool WOMStyleHacks = false;
+		public bool WOMStyleHacks;
 		
 		/// <summary> Whether the player currently has noclip on. </summary>
 		public bool Noclip;
@@ -71,38 +73,35 @@ namespace ClassicalSharp.Entities {
 		public bool HalfSpeeding;
 		
 		public bool CanJumpHigher { get { return Enabled && CanAnyHacks && CanSpeed; } }
+		public bool Floating { get { return Noclip || Flying; } }
+		public string HacksFlags;
 		
-		/// <summary> Parses hack flags specified in the motd and/or name of the server. </summary>
-		/// <remarks> Recognises +/-hax, +/-fly, +/-noclip, +/-speed, +/-respawn, +/-ophax, and horspeed=xyz </remarks>
-		public void ParseHackFlags(string name, string motd) {
-			string joined = name + motd;
-			SetAllHacks(true);
-			MaxSpeedMultiplier = 1;
-			// By default (this is also the case with WoM), we can use hacks.
-			if (joined.Contains("-hax")) SetAllHacks(false);
+		string GetFlagValue(string flag) {
+			int start = HacksFlags.IndexOf(flag, StringComparison.OrdinalIgnoreCase);
+			if (start < 0) return null;
+			start += flag.Length;
 			
-			ParseFlag(b => CanFly = b, joined, "fly");
-			ParseFlag(b => CanNoclip = b, joined, "noclip");
-			ParseFlag(b => CanSpeed = b, joined, "speed");
-			ParseFlag(b => CanRespawn = b, joined, "respawn");
-
-			if (UserType == 0x64)
-				ParseFlag(b => SetAllHacks(b), joined, "ophax");
-			ParseHorizontalSpeed(joined);
+			int end = HacksFlags.IndexOf(' ', start);
+			if (end < 0) end = HacksFlags.Length;
+			return HacksFlags.Substring(start, end - start);
 		}
 		
-		void ParseHorizontalSpeed(string joined) {
-			int start = joined.IndexOf("horspeed=", StringComparison.OrdinalIgnoreCase);
-			if (start < 0) return;
-			start += 9;
+		void ParseHorizontalSpeed() {
+			string num = GetFlagValue("horspeed=");
+			if (num == null) return;
 			
-			int end = joined.IndexOf(' ', start);
-			if (end < 0) end = joined.Length;
-			
-			string num = joined.Substring(start, end - start);
 			float value = 0;
 			if (!Utils.TryParseDecimal(num, out value) || value <= 0) return;
-			MaxSpeedMultiplier = value;
+			BaseHorSpeed = value;
+		}
+		
+		void ParseMultiJumps() {
+			string num = GetFlagValue("jumps=");
+			if (num == null) return;
+			
+			int value = 0;
+			if (!int.TryParse(num, out value) || value < 0) return;
+			MaxJumps = value;
 		}
 		
 		void SetAllHacks(bool allowed) {
@@ -110,11 +109,19 @@ namespace ClassicalSharp.Entities {
 				CanPushbackBlocks = CanUseThirdPersonCamera = allowed;
 		}
 		
-		static void ParseFlag(Action<bool> action, string joined, string flag) {
-			if (joined.Contains("+" + flag)) {
-				action(true);
-			} else if (joined.Contains("-" + flag)) {
-				action(false);
+		void ParseFlag(ref bool target, string flag) {
+			if (HacksFlags.Contains("+" + flag)) {
+				target = true;
+			} else if (HacksFlags.Contains("-" + flag)) {
+				target = false;
+			}
+		}
+		
+		void ParseAllFlag(string flag) {
+			if (HacksFlags.Contains("+" + flag)) {
+				SetAllHacks(true);
+			} else if (HacksFlags.Contains("-" + flag)) {
+				SetAllHacks(false);
 			}
 		}
 		
@@ -123,14 +130,13 @@ namespace ClassicalSharp.Entities {
 		public void SetUserType(byte value) {
 			bool isOp = value >= 100 && value <= 127;
 			UserType = value;
-			Inventory inv = game.Inventory;
-			inv.CanPlace[Block.Bedrock] = isOp;
-			inv.CanDelete[Block.Bedrock] = isOp;
+			BlockInfo.CanPlace[Block.Bedrock] = isOp;
+			BlockInfo.CanDelete[Block.Bedrock] = isOp;
 
-			inv.CanPlace[Block.Water] = isOp;
-			inv.CanPlace[Block.StillWater] = isOp;
-			inv.CanPlace[Block.Lava] = isOp;
-			inv.CanPlace[Block.StillLava] = isOp;
+			BlockInfo.CanPlace[Block.Water] = isOp;
+			BlockInfo.CanPlace[Block.StillWater] = isOp;
+			BlockInfo.CanPlace[Block.Lava] = isOp;
+			BlockInfo.CanPlace[Block.StillLava] = isOp;
 			CanSeeAllNames = isOp;
 		}
 		
@@ -140,9 +146,39 @@ namespace ClassicalSharp.Entities {
 			if (!CanNoclip || !Enabled) Noclip = false;
 			if (!CanSpeed || !Enabled) { Speeding = false; HalfSpeeding = false; }
 			CanDoubleJump = CanAnyHacks && Enabled && CanSpeed;
+			CanSeeAllNames = CanAnyHacks && CanSeeAllNames;
 			
 			if (!CanUseThirdPersonCamera || !Enabled)
 				game.CycleCamera();
+		}
+		
+		
+		/// <summary> Updates ability to use hacks, and raises HackPermissionsChanged event. </summary>
+		/// <remarks> Parses hack flags specified in the motd and/or name of the server. </remarks>
+		/// <remarks> Recognises +/-hax, +/-fly, +/-noclip, +/-speed, +/-respawn, +/-ophax, and horspeed=xyz </remarks>
+		public void UpdateHacksState() {
+			SetAllHacks(true);
+			if (HacksFlags == null) return;
+			
+			BaseHorSpeed = 1;
+			MaxJumps = 1;
+			CanBePushed = true;
+			
+			// By default (this is also the case with WoM), we can use hacks.
+			if (HacksFlags.Contains("-hax")) SetAllHacks(false);
+			
+			ParseFlag(ref CanFly, "fly");
+			ParseFlag(ref CanNoclip, "noclip");
+			ParseFlag(ref CanSpeed, "speed");
+			ParseFlag(ref CanRespawn, "respawn");
+			ParseFlag(ref CanBePushed, "push");
+
+			if (UserType == 0x64) ParseAllFlag("ophax");
+			ParseHorizontalSpeed();
+			ParseMultiJumps();
+			
+			CheckHacksConsistency();
+			game.Events.RaiseHackPermissionsChanged();
 		}
 	}
 }

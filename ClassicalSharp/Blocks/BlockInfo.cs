@@ -4,155 +4,215 @@ using System.Collections.Generic;
 using ClassicalSharp.Blocks;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp {
 
 	public enum SoundType : byte {
 		None, Wood, Gravel, Grass, Stone,
 		Metal, Glass, Cloth, Sand, Snow,
 	}
-	
+
+	/// <summary> Describes how a block is rendered in the world. </summary>
 	public static class DrawType {
+		
+		/// <summary> Completely covers blocks behind (e.g. dirt). </summary>
 		public const byte Opaque = 0;
+		
+		/// <summary> Blocks behind show (e.g. glass). Pixels are either fully visible or invisible. </summary>
 		public const byte Transparent = 1;
-		public const byte TransparentThick = 2; // e.g. leaves render all neighbours
+		
+		/// <summary> Same as Transparent, but all neighbour faces show. (e.g. leaves) </summary>
+		public const byte TransparentThick = 2;
+		
+		/// <summary> Blocks behind show (e.g. water). Pixels blend with other blocks behind. </summary>
 		public const byte Translucent = 3;
+		
+		/// <summary> Does not show (e.g. air). Can still be collided with. </summary>
 		public const byte Gas = 4;
+		
+		/// <summary> Block renders as an X sprite (e.g. sapling). Pixels are either fully visible or invisible. </summary>
 		public const byte Sprite = 5;
 	}
 	
-	public enum CollideType : byte {
-		WalkThrough, // i.e. gas or sprite
-		SwimThrough, // i.e. liquid
-		Solid,       // i.e. solid
+	/// <summary> Describes the interaction a block has with a player when they collide with it. </summary>
+	public static class CollideType {
+		/// <summary> No interaction when player collides. </summary>
+		public const byte Gas = 0;
+		
+		/// <summary> 'swimming'/'bobbing' interaction when player collides. </summary>
+		public const byte Liquid = 1;
+		
+		/// <summary> Block completely stops the player when they are moving. </summary>
+		public const byte Solid = 2;
+		
+		/// <summary> Block is solid and partially slidable on. </summary>
+		public const byte Ice = 3;
+
+		/// <summary> Block is solid and fully slidable on. </summary>		
+		public const byte SlipperyIce = 4;
+
+		/// <summary> Water style 'swimming'/'bobbing' interaction when player collides. </summary>		
+		public const byte LiquidWater = 5;
+
+		/// <summary> Lava style 'swimming'/'bobbing' interaction when player collides. </summary>		
+		public const byte LiquidLava = 6;
 	}
 	
-	/// <summary> Stores various properties about the blocks in Minecraft Classic. </summary>
-	public partial class BlockInfo {
+	/// <summary> Stores various properties about the blocks. </summary>
+	/// <remarks> e.g. blocks light, height, texture IDs, etc. </remarks>
+	public static partial class BlockInfo {
 		
-		/// <summary> Gets whether the given block id is a liquid. (water and lava) </summary>
-		public bool IsLiquid(byte block) { return block >= Block.Water && block <= Block.StillLava; }
-		
-		/// <summary> Gets whether the given block blocks sunlight. </summary>
-		public bool[] BlocksLight = new bool[Block.Count];
-		
-		/// <summary> Gets whether the given block should draw all it faces with a full white colour component. </summary>
-		public bool[] FullBright = new bool[Block.Count];
-		
-		public string[] Name = new string[Block.Count];
-		
-		/// <summary> Gets the custom fog colour that should be used when the player is standing within this block.
-		/// Note that this is only used for exponential fog mode. </summary>
-		public FastColour[] FogColour = new FastColour[Block.Count];
-		
-		public float[] FogDensity = new float[Block.Count];
-		
-		public CollideType[] Collide = new CollideType[Block.Count];
-		
-		public float[] SpeedMultiplier = new float[Block.Count];
-		
-		public byte[] LightOffset = new byte[Block.Count];
+		public static bool IsLiquid(BlockID block) {
+			byte collide = ExtendedCollide[block];
+			return 
+				(collide == CollideType.LiquidWater && Draw[block] == DrawType.Translucent) ||
+				(collide == CollideType.LiquidLava  && Draw[block] == DrawType.Transparent);
+		}
 
-		public byte[] Draw = new byte[Block.Count];
+		public static bool[] BlocksLight = new bool[Block.Count];
+		public static bool[] FullBright = new bool[Block.Count];
+		public static string[] Name = new string[Block.Count];
+		public static FastColour[] FogColour = new FastColour[Block.Count];
+		public static float[] FogDensity = new float[Block.Count];
+		public static byte[] Collide = new byte[Block.Count];
+		public static byte[] ExtendedCollide = new byte[Block.Count];
+		public static float[] SpeedMultiplier = new float[Block.Count];
+		public static byte[] LightOffset = new byte[Block.Count];
+		public static byte[] Draw = new byte[Block.Count];
+		public static uint[] DefinedCustomBlocks = new uint[Block.Count >> 5];
+		public static SoundType[] DigSounds = new SoundType[Block.Count];
+		public static SoundType[] StepSounds = new SoundType[Block.Count];
+		public static bool[] CanPlace = new bool[Block.Count];
+		public static bool[] CanDelete = new bool[Block.Count];
+		public static bool[] Tinted = new bool[Block.Count];
+		public static byte[] SpriteOffset = new byte[Block.Count];
 		
-		public uint[] DefinedCustomBlocks = new uint[Block.Count >> 5];
+		/// <summary> Gets whether the given block has an opaque draw type and is also a full tile block. </summary>
+		/// <remarks> Full tile block means Min of (0, 0, 0) and max of (1, 1, 1). </remarks>
+		public static bool[] FullOpaque = new bool[Block.Count];
 		
-		public SoundType[] DigSounds = new SoundType[Block.Count];
-		
-		public SoundType[] StepSounds = new SoundType[Block.Count];
-		
-		public bool[] Tinted = new bool[Block.Count];
-		
-		public void Reset(Game game) {
+		public static void Reset(Game game) {
 			Init();
 			// TODO: Make this part of TerrainAtlas2D maybe?
 			using (FastBitmap fastBmp = new FastBitmap(game.TerrainAtlas.AtlasBitmap, true, true))
 				RecalculateSpriteBB(fastBmp);
 		}
 		
-		public void Init() {
+		public static void Init() {
 			for (int i = 0; i < DefinedCustomBlocks.Length; i++)
 				DefinedCustomBlocks[i] = 0;
 			for (int block = 0; block < Block.Count; block++)
-				ResetBlockProps((byte)block);
+				ResetBlockProps((BlockID)block);
 			UpdateCulling();
 		}
 
-		public void SetDefaultBlockPerms(InventoryPermissions place,
-		                                 InventoryPermissions delete) {
+		public static void SetDefaultPerms() {
 			for (int block = Block.Stone; block <= Block.MaxDefinedBlock; block++) {
-				place[block] = true;
-				delete[block] = true;
+				CanPlace[block] = true;
+				CanDelete[block] = true;
 			}
-			place[Block.Lava] = false;
-			place[Block.Water] = false;
-			place[Block.StillLava] = false;
-			place[Block.StillWater] = false;
-			place[Block.Bedrock] = false;
 			
-			delete[Block.Bedrock] = false;
-			delete[Block.Lava] = false;
-			delete[Block.Water] = false;
-			delete[Block.StillWater] = false;
-			delete[Block.StillLava] = false;
+			CanPlace[Block.Lava]       = false; CanDelete[Block.Lava]       = false;
+			CanPlace[Block.Water]      = false; CanDelete[Block.Water]      = false;
+			CanPlace[Block.StillLava]  = false; CanDelete[Block.StillLava]  = false;
+			CanPlace[Block.StillWater] = false; CanDelete[Block.StillWater] = false;
+			CanPlace[Block.Bedrock]    = false; CanDelete[Block.Bedrock]    = false;
 		}
 		
-		public void SetBlockDraw(byte id, byte draw) {
-			if (draw == DrawType.Opaque && Collide[id] != CollideType.Solid)
+		public static void SetCollide(BlockID block, byte collide) {
+			// necessary for cases where servers redefined core blocks before extended types were introduced
+			collide = DefaultSet.MapOldCollide(block, collide);
+			ExtendedCollide[block] = collide;
+			
+			// Reduce extended collision types to their simpler forms
+			if (collide == CollideType.Ice) collide = CollideType.Solid;
+			if (collide == CollideType.SlipperyIce) collide = CollideType.Solid;
+			
+			if (collide == CollideType.LiquidWater) collide = CollideType.Liquid;
+			if (collide == CollideType.LiquidLava) collide = CollideType.Liquid;
+			Collide[block] = collide;
+		}
+		
+		public static void SetBlockDraw(BlockID block, byte draw) {
+			if (draw == DrawType.Opaque && Collide[block] != CollideType.Solid)
 				draw = DrawType.Transparent;
-			Draw[id] = draw;
+			Draw[block] = draw;
+			
+			FullOpaque[block] = draw == DrawType.Opaque
+				&& MinBB[block] == Vector3.Zero && MaxBB[block] == Vector3.One;
 		}
 		
-		public void ResetBlockProps(byte id) {
-			BlocksLight[id] = DefaultSet.BlocksLight(id);
-			FullBright[id] = DefaultSet.FullBright(id);
-			FogColour[id] = DefaultSet.FogColour(id);
-			FogDensity[id] = DefaultSet.FogDensity(id);
-			Collide[id] = DefaultSet.Collide(id);
-			DigSounds[id] = DefaultSet.DigSound(id);
-			StepSounds[id] = DefaultSet.StepSound(id);
-			SetBlockDraw(id, DefaultSet.Draw(id));
-			SpeedMultiplier[id] = 1;
-			Name[id] = DefaultName(id);
-			Tinted[id] = false;
+		public static void ResetBlockProps(BlockID block) {
+			BlocksLight[block] = DefaultSet.BlocksLight(block);
+			FullBright[block] = DefaultSet.FullBright(block);
+			FogColour[block] = DefaultSet.FogColour(block);
+			FogDensity[block] = DefaultSet.FogDensity(block);
+			SetCollide(block, DefaultSet.Collide(block));
+			DigSounds[block] = DefaultSet.DigSound(block);
+			StepSounds[block] = DefaultSet.StepSound(block);
+			SpeedMultiplier[block] = 1;
+			Name[block] = DefaultName(block);
+			Tinted[block] = false;
+			SpriteOffset[block] = 0;
 			
-			if (Draw[id] == DrawType.Sprite) {
-				MinBB[id] = new Vector3(2.50f/16f, 0, 2.50f/16f);
-				MaxBB[id] = new Vector3(13.5f/16f, 1, 13.5f/16f);
+			Draw[block] = DefaultSet.Draw(block);
+			if (Draw[block] == DrawType.Sprite) {
+				MinBB[block] = new Vector3(2.50f/16f, 0, 2.50f/16f);
+				MaxBB[block] = new Vector3(13.5f/16f, 1, 13.5f/16f);
 			} else {
-				MinBB[id] = Vector3.Zero;
-				MaxBB[id] = Vector3.One;
-				MaxBB[id].Y = DefaultSet.Height(id);
+				MinBB[block] = Vector3.Zero;
+				MaxBB[block] = Vector3.One;
+				MaxBB[block].Y = DefaultSet.Height(block);
 			}
-			LightOffset[id] = CalcLightOffset(id);
 			
-			if (id >= Block.CpeCount) {
-				SetTex(0, Side.Top, id);
-				SetTex(0, Side.Bottom, id);
-				SetSide(0, id);
+			SetBlockDraw(block, Draw[block]);
+			CalcRenderBounds(block);			
+			LightOffset[block] = CalcLightOffset(block);
+			
+			if (block >= Block.CpeCount) {
+				#if USE16_BIT
+				// give some random texture ids
+				SetTex((block * 10 + (block % 7) + 20) % 80, Side.Top, block);
+				SetTex((block * 8  + (block & 5) + 5 ) % 80, Side.Bottom, block);
+				SetSide((block * 4 + (block / 4) + 4 ) % 80, block);
+				#else
+				SetTex(0, Side.Top, block);
+				SetTex(0, Side.Bottom, block);
+				SetSide(0, block);
+				#endif
 			} else {
-				SetTex(topTex[id], Side.Top, id);
-				SetTex(bottomTex[id], Side.Bottom, id);
-				SetSide(sideTex[id], id);
+				SetTex(topTex[block], Side.Top, block);
+				SetTex(bottomTex[block], Side.Bottom, block);
+				SetSide(sideTex[block], block);
 			}
 		}
-		
-		public int FindID(string name) {
+
+		public static int FindID(string name) {
 			for (int i = 0; i < Block.Count; i++) {
 				if (Utils.CaselessEquals(Name[i], name)) return i;
 			}
 			return -1;
 		}
 		
+		
 		static StringBuffer buffer = new StringBuffer(64);
-		static string DefaultName(byte block) {
+		static string DefaultName(BlockID block) {
+			#if USE16_BIT
+			if (block >= 256) return "ID " + block;
+			#endif
 			if (block >= Block.CpeCount) return "Invalid";
 			
 			// Find start and end of this particular block name
 			int start = 0;
 			for (int i = 0; i < block; i++)
-				start = Block.Names.IndexOf(' ', start) + 1;
-			int end = Block.Names.IndexOf(' ', start);
-			if (end == -1) end = Block.Names.Length;
+				start = Block.RawNames.IndexOf(' ', start) + 1;
+			int end = Block.RawNames.IndexOf(' ', start);
+			if (end == -1) end = Block.RawNames.Length;
 			
 			buffer.Clear();
 			SplitUppercase(buffer, start, end);
@@ -162,9 +222,9 @@ namespace ClassicalSharp {
 		static void SplitUppercase(StringBuffer buffer, int start, int end) {
 			int index = 0;
 			for (int i = start; i < end; i++) {
-				char c = Block.Names[i];
+				char c = Block.RawNames[i];
 				bool upper = Char.IsUpper(c) && i > start;
-				bool nextLower = i < end - 1 && !Char.IsUpper(Block.Names[i + 1]);
+				bool nextLower = i < end - 1 && !Char.IsUpper(Block.RawNames[i + 1]);
 				
 				if (upper && nextLower) {
 					buffer.Append(ref index, ' ');

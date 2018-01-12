@@ -10,10 +10,8 @@ using Launcher.Gui.Widgets;
 namespace Launcher.Gui.Screens {	
 	public sealed class DirectConnectScreen : InputScreen {
 		
-		Font booleanFont;
 		DirectConnectView view;
 		public DirectConnectScreen(LauncherWindow game) : base(game) {
-			booleanFont = new Font(game.FontName, 22, FontStyle.Regular);
 			enterIndex = 3;
 			view = new DirectConnectView(game);
 			widgets = view.widgets;
@@ -32,13 +30,14 @@ namespace Launcher.Gui.Screens {
 		}
 		
 		void SetWidgetHandlers() {
-			widgets[view.backIndex].OnClick =
-				(x, y) => game.SetScreen(new MainScreen(game));
+			widgets[view.backIndex].OnClick = SwitchToMain;
 			widgets[view.connectIndex].OnClick = StartClient;
 			widgets[view.ccSkinsIndex].OnClick = UseClassicubeSkinsClick;			
 			SetupInputHandlers();
 			LoadSavedInfo();
 		}
+		
+		void SwitchToMain(int x, int y) { game.SetScreen(new MainScreen(game)); }
 		
 		void SetStatus(string text) {
 			LabelWidget widget = (LabelWidget)widgets[view.statusIndex];
@@ -56,33 +55,28 @@ namespace Launcher.Gui.Screens {
 		public override void Dispose() {
 			StoreFields();
 			base.Dispose();
-			booleanFont.Dispose();
 		}
 		
+		static string cachedUser, cachedAddress, cachedMppass;
+		static bool cachedSkins;
+		
 		void LoadSavedInfo() {
-			Dictionary<string, object> metadata;
 			// restore what user last typed into the various fields
-			if (game.ScreenMetadata.TryGetValue("screen-DC", out metadata)) {
-				SetText(0, (string)metadata["user"]);
-				SetText(1, (string)metadata["address"]);
-				SetText(2, (string)metadata["mppass"]);
-				SetBool((bool)metadata["skins"]);
+			if (cachedUser != null) {
+				SetText(0, cachedUser);
+				SetText(1, cachedAddress);
+				SetText(2, cachedMppass);
+				SetBool(cachedSkins);
 			} else {
 				LoadFromOptions();
 			}
 		}
 		
 		void StoreFields() {
-			Dictionary<string, object> metadata;
-			if (!game.ScreenMetadata.TryGetValue("screen-DC", out metadata)) {
-				metadata = new Dictionary<string, object>();
-				game.ScreenMetadata["screen-DC"] = metadata;
-			}
-			
-			metadata["user"] = Get(0);
-			metadata["address"] = Get(1);
-			metadata["mppass"] = Get(2);
-			metadata["skins"] = ((CheckboxWidget)widgets[view.ccSkinsIndex]).Value;
+			cachedUser = Get(0);
+			cachedAddress = Get(1);
+			cachedMppass = Get(2);
+			cachedSkins = ((CheckboxWidget)widgets[view.ccSkinsIndex]).Value;
 		}
 		
 		void LoadFromOptions() {
@@ -150,7 +144,7 @@ namespace Launcher.Gui.Screens {
 			SetStatus("");
 			
 			if (String.IsNullOrEmpty(user)) {
-				SetStatus("&ePlease enter a username"); return null;
+				SetStatus("&eUsername required"); return null;
 			}
 			
 			IPAddress realIp;
@@ -167,7 +161,7 @@ namespace Launcher.Gui.Screens {
 			if (String.IsNullOrEmpty(mppass))
 				mppass = "(none)";
 			
-			ClientStartData data = new ClientStartData(user, mppass, ip, port);
+			ClientStartData data = new ClientStartData(user, mppass, ip, port, "");
 			if (Utils.CaselessEquals(user, "rand()") || Utils.CaselessEquals(user, "random()")) {
 				rnd.NextBytes(rndBytes);
 				data.Username = Convert.ToBase64String(rndBytes).TrimEnd('=');

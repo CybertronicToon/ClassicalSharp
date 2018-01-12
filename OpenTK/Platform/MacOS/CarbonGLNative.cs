@@ -48,25 +48,22 @@ namespace OpenTK.Platform.MacOS
 		Rectangle windowedBounds;
 		bool mIsDisposed = false;
 		bool mExists = true;
-		DisplayDevice mDisplayDevice;
+		internal DisplayDevice TargetDisplayDevice;
 
 		WindowPositionMethod mPositionMethod = WindowPositionMethod.CenterOnMainScreen;
 		int mTitlebarHeight;
-		private WindowState windowState = WindowState.Normal;
-		static Dictionary<IntPtr, WeakReference> mWindows = new Dictionary<IntPtr, WeakReference>();
+		WindowState windowState = WindowState.Normal;
+		internal static Dictionary<IntPtr, WeakReference> WindowRefs = new Dictionary<IntPtr, WeakReference>();
 		KeyPressEventArgs mKeyPressArgs = new KeyPressEventArgs();
 		bool mMouseIn = false;
 		bool mIsActive = false;
 		Icon mIcon;
 
-		static internal Dictionary<IntPtr, WeakReference> WindowRefMap { get { return mWindows; } }
-		internal DisplayDevice TargetDisplayDevice { get { return mDisplayDevice; } }
-
 		static CarbonGLNative() {
 			Application.Initialize();
 		}
 		
-		public CarbonGLNative(int x, int y, int width, int height, string title, GameWindowFlags options, DisplayDevice device)
+		public CarbonGLNative(int x, int y, int width, int height, string title, DisplayDevice device)
 		{
 			this.title = title;
 			CreateNativeWindow(WindowClass.Document,
@@ -74,7 +71,7 @@ namespace OpenTK.Platform.MacOS
 			                   WindowAttributes.InWindowMenu | WindowAttributes.LiveResize,
 			                   new Rect((short)x, (short)y, (short)width, (short)height));
 			
-			mDisplayDevice = device;
+			TargetDisplayDevice = device;
 		}
 
 		#region IDisposable
@@ -95,7 +92,7 @@ namespace OpenTK.Platform.MacOS
 			mExists = false;
 
 			if (disposing) {
-				mWindows.Remove(window.WindowRef);
+				WindowRefs.Remove(window.WindowRef);
 				window = null;
 			}
 			DisposeUPP();
@@ -126,13 +123,13 @@ namespace OpenTK.Platform.MacOS
 			IntPtr windowRef;
 			OSStatus err = API.CreateNewWindow(@class, attrib, ref r, out windowRef);
 			API.CheckReturn( err );
-			Debug.Print( "Created window " + windowRef );
+			Debug.Print( "Created window " + windowRef.ToString() );
 			API.SetWindowTitle(windowRef, title);
 
 			window = new CarbonWindowInfo(windowRef);
 			SetLocation(r.X, r.Y);
 			SetSize(r.Width, r.Height);
-			mWindows.Add(windowRef, new WeakReference(this));
+			WindowRefs.Add(windowRef, new WeakReference(this));
 			LoadSize();
 
 			Rect titleSize = API.GetWindowBounds(window.WindowRef, WindowRegionCode.TitleBarRegion);
@@ -191,12 +188,12 @@ namespace OpenTK.Platform.MacOS
 			int width, height;
 			context.SetFullScreen(window, out width, out height);
 
-			Debug.Print("Prev Size: {0}, {1}", Width, Height);
+			Debug.Print("Prev Size: {0}, {1}", ClientRectangle.Width, ClientRectangle.Height);
 			clientRectangle.Size = new Size(width, height);
-			Debug.Print("New Size: {0}, {1}", Width, Height);
+			Debug.Print("New Size: {0}, {1}", ClientRectangle.Width, ClientRectangle.Height);
 
 			// TODO: if we go full screen we need to make this use the device specified.
-			bounds = mDisplayDevice.Bounds;
+			bounds = TargetDisplayDevice.Bounds;
 			windowState = WindowState.Fullscreen;
 		}
 
@@ -231,14 +228,14 @@ namespace OpenTK.Platform.MacOS
 		{
 			// bail out if the window passed in is not actually our window.
 			// I think this happens if using winforms with a GameWindow sometimes.
-			if (!mWindows.ContainsKey(userData))
+			if (!WindowRefs.ContainsKey(userData))
 				return OSStatus.EventNotHandled;
 
-			WeakReference reference = mWindows[userData];
+			WeakReference reference = WindowRefs[userData];
 
 			// bail out if the CarbonGLNative window has been garbage collected.
 			if (!reference.IsAlive) {
-				mWindows.Remove(userData);
+				WindowRefs.Remove(userData);
 				return OSStatus.EventNotHandled;
 			}
 
@@ -316,12 +313,12 @@ namespace OpenTK.Platform.MacOS
 					return OSStatus.NoError;
 
 				case WindowEventKind.WindowBoundsChanged:
-					int thisWidth = Width;
-					int thisHeight = Height;
+					int thisWidth = ClientRectangle.Width;
+					int thisHeight = ClientRectangle.Height;
 
 					LoadSize();
 
-					if (thisWidth != Width || thisHeight != Height)
+					if (thisWidth != ClientRectangle.Width || thisHeight != ClientRectangle.Height)
 						OnResize();
 
 					return OSStatus.EventNotHandled;
@@ -418,7 +415,7 @@ namespace OpenTK.Platform.MacOS
 					return OSStatus.NoError;
 
 				case MouseEventKind.WheelMoved:
-					mouse.WheelPrecise += API.GetEventMouseWheelDelta(inEvent);
+					mouse.Wheel += API.GetEventMouseWheelDelta(inEvent);
 					return OSStatus.NoError;
 
 				case MouseEventKind.MouseMoved:
@@ -712,14 +709,6 @@ namespace OpenTK.Platform.MacOS
 			}
 		}
 
-		public string Title {
-			get { return title; }
-			set {
-				API.SetWindowTitle(window.WindowRef, value);
-				title = value;
-			}
-		}
-
 		public bool Visible {
 			get { return API.IsWindowVisible(window.WindowRef); }
 			set {
@@ -750,26 +739,6 @@ namespace OpenTK.Platform.MacOS
 		public Size Size {
 			get { return bounds.Size; }
 			set { SetSize((short)value.Width, (short)value.Height); }
-		}
-
-		public int Width {
-			get { return ClientRectangle.Width; }
-			set { SetClientSize((short)value, (short)Height); }
-		}
-
-		public int Height {
-			get { return ClientRectangle.Height; }
-			set { SetClientSize((short)Width, (short)value); }
-		}
-
-		public int X {
-			get { return ClientRectangle.X; }
-			set { Location = new Point(value, Y); }
-		}
-
-		public int Y {
-			get { return ClientRectangle.Y; }
-			set { Location = new Point(X, value); }
 		}
 
 		public Rectangle ClientRectangle {
@@ -935,22 +904,20 @@ namespace OpenTK.Platform.MacOS
 
 		#endregion
 
-		public event EventHandler<EventArgs> Load;
-		public event EventHandler<EventArgs> Unload;
-		public event EventHandler<EventArgs> Move;
-		public event EventHandler<EventArgs> Resize;
+		public event EventHandler Load;
+		public event EventHandler Unload;
+		public event EventHandler Move;
+		public event EventHandler Resize;
 		public event EventHandler<CancelEventArgs> Closing;
-		public event EventHandler<EventArgs> Closed;
-		public event EventHandler<EventArgs> Disposed;
-		public event EventHandler<EventArgs> IconChanged;
-		public event EventHandler<EventArgs> TitleChanged;
-		public event EventHandler<EventArgs> ClientSizeChanged;
-		public event EventHandler<EventArgs> VisibleChanged;
-		public event EventHandler<EventArgs> FocusedChanged;
-		public event EventHandler<EventArgs> WindowStateChanged;
+		public event EventHandler Closed;
+		public event EventHandler Disposed;
+		public event EventHandler ClientSizeChanged;
+		public event EventHandler VisibleChanged;
+		public event EventHandler FocusedChanged;
+		public event EventHandler WindowStateChanged;
 		public event EventHandler<KeyPressEventArgs> KeyPress;
-		public event EventHandler<EventArgs> MouseEnter;
-		public event EventHandler<EventArgs> MouseLeave;
+		public event EventHandler MouseEnter;
+		public event EventHandler MouseLeave;
 
 		#endregion
 		

@@ -11,13 +11,10 @@ using System.Collections.Generic;
 
 namespace OpenTK.Platform.Windows {
 	
-	internal class WinDisplayDeviceDriver : IDisplayDeviceDriver {
-		
-		static Dictionary<DisplayDevice, string> available_device_names =
-			new Dictionary<DisplayDevice, string>(); // Needed for ChangeDisplaySettingsEx
+	internal static class WinDisplayDevice {
 
 		/// <summary>Queries available display devices and display resolutions.</summary>
-		static WinDisplayDeviceDriver() {
+		internal static void Init() {
 			// To minimize the need to add static methods to OpenTK.Graphics.DisplayDevice
 			// we only allow settings to be set through its constructor.
 			// Thus, we save all necessary parameters in temporary variables
@@ -25,7 +22,6 @@ namespace OpenTK.Platform.Windows {
 			// The main DisplayDevice constructor adds the newly constructed device
 			// to the list of available devices.
 			DisplayResolution currentRes = null;
-			List<DisplayResolution> availableRes = new List<DisplayResolution>();
 			bool devPrimary = false;
 			int deviceNum = 0;
 
@@ -35,57 +31,27 @@ namespace OpenTK.Platform.Windows {
 				if ((winDev.StateFlags & DisplayDeviceStateFlags.AttachedToDesktop) == 0)
 					continue;
 
-				DeviceMode monitor_mode = new DeviceMode();
+				DeviceMode mode = new DeviceMode();
 
 				// The second function should only be executed when the first one fails (e.g. when the monitor is disabled)
-				if (API.EnumDisplaySettings(winDev.DeviceName, (int)DisplayModeSettings.Current, monitor_mode) ||
-				    API.EnumDisplaySettings(winDev.DeviceName, (int)DisplayModeSettings.Registry, monitor_mode)) {
-					currentRes = new DisplayResolution(
-						monitor_mode.Position.X, monitor_mode.Position.Y,
-						monitor_mode.PelsWidth, monitor_mode.PelsHeight,
-						monitor_mode.BitsPerPel, monitor_mode.DisplayFrequency);
-					devPrimary = (winDev.StateFlags & DisplayDeviceStateFlags.PrimaryDevice) != 0;
+				if (API.EnumDisplaySettings(winDev.DeviceName, (int)DisplayModeSettings.Current, mode) ||
+				    API.EnumDisplaySettings(winDev.DeviceName, (int)DisplayModeSettings.Registry, mode)) {
+					if (mode.BitsPerPel > 0) {
+						currentRes = new DisplayResolution(
+							mode.PelsWidth, mode.PelsHeight,
+							mode.BitsPerPel, mode.DisplayFrequency);
+						devPrimary = (winDev.StateFlags & DisplayDeviceStateFlags.PrimaryDevice) != 0;
+					}
 				}
-
-				availableRes.Clear();
-				int i = 0;
-				while (API.EnumDisplaySettings(winDev.DeviceName, i++, monitor_mode)) {
-					availableRes.Add(new DisplayResolution(
-						monitor_mode.Position.X, monitor_mode.Position.Y,
-						monitor_mode.PelsWidth, monitor_mode.PelsHeight,
-						monitor_mode.BitsPerPel, monitor_mode.DisplayFrequency));
-				}
+				
+				// This device has no valid resolution, ignore it
+				if (currentRes == null) continue;
 
 				// Construct the OpenTK DisplayDevice through the accumulated parameters.
 				// The constructor automatically adds the DisplayDevice to the list of available devices.
-				DisplayDevice device = new DisplayDevice(currentRes, devPrimary, availableRes, currentRes.Bounds);
-				available_device_names.Add(device, winDev.DeviceName);
+				DisplayDevice device = new DisplayDevice(currentRes, devPrimary);
+				currentRes = null;
 			}
-		}
-
-		public WinDisplayDeviceDriver() {
-		}
-
-		public bool TryChangeResolution(DisplayDevice device, DisplayResolution resolution) {
-			DeviceMode mode = null;
-
-			if (resolution != null)  {
-				mode = new DeviceMode();
-				mode.PelsWidth = resolution.Width;
-				mode.PelsHeight = resolution.Height;
-				mode.BitsPerPel = resolution.BitsPerPixel;
-				mode.DisplayFrequency = (int)resolution.RefreshRate;
-				mode.Fields = Constants.DM_BITSPERPEL | Constants.DM_PELSWIDTH
-					| Constants.DM_PELSHEIGHT | Constants.DM_DISPLAYFREQUENCY;
-			}
-
-			return Constants.DISP_CHANGE_SUCCESSFUL ==
-				API.ChangeDisplaySettingsEx(available_device_names[device], mode, IntPtr.Zero,
-				                                  ChangeDisplaySettingsEnum.Fullscreen, IntPtr.Zero);
-		}
-
-		public bool TryRestoreResolution(DisplayDevice device) {
-			return TryChangeResolution(device, null);
 		}
 	}
 }

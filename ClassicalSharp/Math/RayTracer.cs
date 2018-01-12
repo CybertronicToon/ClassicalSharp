@@ -3,6 +3,12 @@ using System;
 using ClassicalSharp.Map;
 using OpenTK;
 
+#if USE16_BIT
+using BlockID = System.UInt16;
+#else
+using BlockID = System.Byte;
+#endif
+
 namespace ClassicalSharp {
 
 	// http://www.xnawiki.com/index.php/Voxel_traversal
@@ -18,9 +24,9 @@ namespace ClassicalSharp {
 		public Vector3 Origin, Dir;
 		// Block data
 		public Vector3 Min, Max;
-		public byte Block;
+		public BlockID Block;
 		
-		Vector3I step, cellBoundary;
+		Vector3I step;
 		Vector3 tMax, tDelta;
 		
 		public void SetVectors(Vector3 origin, Vector3 dir) {
@@ -35,10 +41,10 @@ namespace ClassicalSharp {
 			// Calculate cell boundaries. When the step (i.e. direction sign) is positive,
 			// the next boundary is AFTER our current position, meaning that we have to add 1.
 			// Otherwise, it is BEFORE our current position, in which case we add nothing.
-			cellBoundary = new Vector3I(
-				start.X + (step.X > 0 ? 1 : 0),
-				start.Y + (step.Y > 0 ? 1 : 0),
-				start.Z + (step.Z > 0 ? 1 : 0));
+			Vector3I cellBoundary;
+			cellBoundary.X = start.X + (step.X > 0 ? 1 : 0);
+			cellBoundary.Y = start.Y + (step.Y > 0 ? 1 : 0);
+			cellBoundary.Z = start.Z + (step.Z > 0 ? 1 : 0);
 			
 			// NOTE: we want it so if dir.x = 0, tmax.x = positive infinity
 			// Determine how far we can travel along the ray before we hit a voxel boundary.

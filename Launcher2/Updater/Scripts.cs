@@ -9,15 +9,15 @@ namespace Launcher.Updater {
 			@"@echo off
 echo Waiting for launcher to exit..
 echo 5..
-sleep 1
+ping 127.0.0.1 -n 2 > nul
 echo 4..
-sleep 1
+ping 127.0.0.1 -n 2 > nul
 echo 3..
-sleep 1
+ping 127.0.0.1 -n 2 > nul
 echo 2..
-sleep 1
+ping 127.0.0.1 -n 2 > nul
 echo 1..
-sleep 1
+ping 127.0.0.1 -n 2 > nul
 
 set root=%CD%
 echo Extracting files from CS_Update folder
@@ -47,8 +47,12 @@ echo 1..
 sleep 1
 
 echo Extracting files from CS_Update folder
+TARGETDIR=""`pwd`""
 UPDATEDIR=""`pwd`/CS_Update/""
-find ""$UPDATEDIR"" -name '*.*' | xargs cp -t `pwd`
+
+for FILE in ""$UPDATEDIR""*.* ;do
+  mv ""$FILE"" ""$TARGETDIR""
+done
 
 rm -r ""$UPDATEDIR""
 echo Starting launcher again

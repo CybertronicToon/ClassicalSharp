@@ -26,7 +26,7 @@ namespace ClassicalSharp {
 			#if !ANDROID
 			Hotkeys = new HotkeyList();
 			Hotkeys.LoadSavedHotkeys();
-			#endif			
+			#endif
 		}
 		
 		void RegisterInputHandlers() {
@@ -69,13 +69,24 @@ namespace ClassicalSharp {
 			picking.PickBlocks(cooldown, left, middle, right);
 		}
 		
-		internal void ButtonStateChanged(MouseButton button, bool pressed, byte targetId) {
+		// defer getting the targeted entity as it's a costly operation
+		internal int pickingId = -1;
+		internal void ButtonStateChanged(MouseButton button, bool pressed) {
 			if (buttonsDown[(int)button]) {
-				game.Server.SendPlayerClick(button, false, targetId, game.SelectedPos);
+				if (pickingId == -1) {
+					pickingId = game.Entities.GetClosetPlayer(game.LocalPlayer);
+				}
+				
+				game.Server.SendPlayerClick(button, false, (byte)pickingId, game.SelectedPos);
 				buttonsDown[(int)button] = false;
 			}
+			
 			if (pressed) {
-				game.Server.SendPlayerClick(button, true, targetId, game.SelectedPos);
+				if (pickingId == -1) {
+					pickingId = game.Entities.GetClosetPlayer(game.LocalPlayer);
+				}
+				
+				game.Server.SendPlayerClick(button, true, (byte)pickingId, game.SelectedPos);
 				buttonsDown[(int)button] = true;
 			}
 		}
@@ -85,10 +96,10 @@ namespace ClassicalSharp {
 				picking.lastClick = DateTime.UtcNow;
 			
 			if (game.Server.UsingPlayerClick) {
-				byte targetId = game.Entities.GetClosetPlayer(game.LocalPlayer);
-				ButtonStateChanged(MouseButton.Left, false, targetId);
-				ButtonStateChanged(MouseButton.Right, false, targetId);
-				ButtonStateChanged(MouseButton.Middle, false, targetId);
+				pickingId = -1;
+				ButtonStateChanged(MouseButton.Left, false);
+				ButtonStateChanged(MouseButton.Right, false);
+				ButtonStateChanged(MouseButton.Middle, false);
 			}
 		}
 		
@@ -98,8 +109,8 @@ namespace ClassicalSharp {
 		void MouseButtonUp(object sender, MouseButtonEventArgs e) {
 			if (!game.Gui.ActiveScreen.HandlesMouseUp(e.X, e.Y, e.Button)) {
 				if (game.Server.UsingPlayerClick && e.Button <= MouseButton.Middle) {
-					byte targetId = game.Entities.GetClosetPlayer(game.LocalPlayer);
-					ButtonStateChanged(e.Button, false, targetId);
+					pickingId = -1;
+					ButtonStateChanged(e.Button, false);
 				}
 			}
 		}
@@ -120,30 +131,15 @@ namespace ClassicalSharp {
 			}
 		}
 
-		float deltaAcc = 0;
 		void MouseWheelChanged(object sender, MouseWheelEventArgs e) {
 			if (game.Gui.ActiveScreen.HandlesMouseScroll(e.Delta)) return;
 			
 			Inventory inv = game.Inventory;
 			bool hotbar = AltDown || ControlDown || ShiftDown;
-			if ((!hotbar && game.Camera.DoZoom(e.DeltaPrecise)) || DoFovZoom(e.DeltaPrecise) || !inv.CanChangeHeldBlock)
+			if ((!hotbar && game.Camera.Zoom(e.Delta)) || DoFovZoom(e.Delta) || !inv.CanChangeHeldBlock)
 				return;
-			ScrollHotbar(e.DeltaPrecise);
-		}
-		
-		void ScrollHotbar(float deltaPrecise) {
-			// Some mice may use deltas of say (0.2, 0.2, 0.2, 0.2, 0.2)
-			// We must use rounding at final step, not at every intermediate step.
-			Inventory inv = game.Inventory;
-			deltaAcc += deltaPrecise;
-			int delta = (int)deltaAcc;
-			deltaAcc -= delta;
 			
-			int diff = -delta % inv.Hotbar.Length;
-			int newIndex = inv.HeldBlockIndex + diff;
-			if (newIndex < 0) newIndex += inv.Hotbar.Length;
-			if (newIndex >= inv.Hotbar.Length) newIndex -= inv.Hotbar.Length;
-			inv.HeldBlockIndex = newIndex;
+			game.Gui.hudScreen.hotbar.HandlesMouseScroll(e.Delta);
 		}
 
 		void KeyPressHandler(object sender, KeyPressEventArgs e) {
@@ -162,12 +158,12 @@ namespace ClassicalSharp {
 			}
 		}
 
-		static int[] viewDistances = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+		static int[] normViewDists = new int[] { 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+		static int[] classicViewDists = new int[] { 8, 32, 128, 512 };
 		Key lastKey;
 		void KeyDownHandler(object sender, KeyboardKeyEventArgs e) {
 			Key key = e.Key;
-			if (SimulateMouse(key, true)) return;
-			
+			if (SimulateMouse(key, true)) return;			
 			
 			if (IsShutdown(key)) {
 				game.Exit();
@@ -194,7 +190,7 @@ namespace ClassicalSharp {
 			if (!Hotkeys.IsHotkey(key, game.Input, out text, out more)) return;
 			
 			if (!more) {
-				game.Server.SendChat(text, false);
+				game.Server.SendChat(text);
 			} else if (game.Gui.activeScreen == null) {
 				game.Gui.hudScreen.OpenTextInputBar(text);
 			}
@@ -207,11 +203,9 @@ namespace ClassicalSharp {
 			
 			if (!(key == left || key == middle || key == right))
 				return false;
-			simArgs.Button = key == left ? MouseButton.Left :
-				key == middle ? MouseButton.Middle : MouseButton.Right;
+			simArgs.Button = key == left ? MouseButton.Left : key == middle ? MouseButton.Middle : MouseButton.Right;
 			simArgs.X = game.Mouse.X;
 			simArgs.Y = game.Mouse.Y;
-			simArgs.IsPressed = pressed;
 			
 			if (pressed) MouseButtonDown(null, simArgs);
 			else MouseButtonUp(null, simArgs);
@@ -229,64 +223,66 @@ namespace ClassicalSharp {
 					game.window.WindowState = state == WindowState.Fullscreen ?
 						WindowState.Normal : WindowState.Fullscreen;
 				}
+			} else if (key == Keys[KeyBind.SmoothCamera]) {
+				Toggle(key, ref game.SmoothCamera,
+				       "  &eSmooth camera is &aenabled",
+				       "  &eSmooth camera is &cdisabled");
 			} else if (key == Keys[KeyBind.AxisLines]) {
-				ToggleAxisLines();
+				Toggle(key, ref game.ShowAxisLines,
+				       "  &eAxis lines (&4X&e, &2Y&e, &1Z&e) now show",
+				       "  &eAxis lines no longer show");
 			} else if (key == Keys[KeyBind.Autorotate]) {
-				ToggleAutoRotate();
+				Toggle(key, ref game.AutoRotate,
+				       "  &eAuto rotate is &aenabled",
+				       "  &eAuto rotate is &cdisabled");
 			} else if (key == Keys[KeyBind.ThirdPerson]) {
 				game.CycleCamera();
 			} else if (key == Keys[KeyBind.ToggleFog]) {
+				int[] viewDists = game.UseClassicOptions ? classicViewDists : normViewDists;
 				if (game.Input.ShiftDown) {
-					CycleDistanceBackwards();
+					CycleDistanceBackwards(viewDists);
 				} else {
-					CycleDistanceForwards();
+					CycleDistanceForwards(viewDists);
 				}
-			} else if (key == Keys[KeyBind.PauseOrExit] && !game.World.IsNotLoaded) {
+			} else if (key == Keys[KeyBind.PauseOrExit] && game.World.blocks != null) {
 				game.Gui.SetNewScreen(new PauseScreen(game));
-			} else if (!game.Mode.HandlesKeyDown(key)) {
+			} else if (game.Mode.HandlesKeyDown(key)) {
+			} else if (key == Keys[KeyBind.IDOverlay]) {
+				if (game.Gui.overlays.Count > 0) return true;
+				game.Gui.ShowOverlay(new TexIdsOverlay(game));
+			} else {
 				return false;
 			}
 			return true;
 		}
-		
-		void ToggleAxisLines() {
-			game.ShowAxisLines = !game.ShowAxisLines;
-			Key key = Keys[KeyBind.AxisLines];
-			if (game.ShowAxisLines) {
-				game.Chat.Add("  &eAxis lines (&4X&e, &2Y&e, &1Z&e) now show. Press &a" + key + " &eto disable.");
+
+		void Toggle(Key key, ref bool target, string enableMsg, string disableMsg) {
+			target = !target;
+			if (target) {
+				game.Chat.Add(enableMsg + ". &ePress &a" + key + " &eto disable.");
 			} else {
-				game.Chat.Add("  &eAxis lines no longer show. Press &a" + key + " &eto re-enable.");
+				game.Chat.Add(disableMsg + ". &ePress &a" + key + " &eto re-enable.");
 			}
 		}
 		
-		void ToggleAutoRotate() {
-			game.autoRotate = !game.autoRotate;
-			Key key = Keys[KeyBind.Autorotate];
-			if (game.autoRotate) {
-				game.Chat.Add("  &eAuto rotate is &aenabled. &aPress " + key + " &eto disable.");
-			} else {
-				game.Chat.Add("  &eAuto rotate is &cdisabled. &aPress " + key + " &eto re-enable.");
-			}
-		}
-		
-		void CycleDistanceForwards() {
-			for (int i = 0; i < viewDistances.Length; i++) {
-				int dist = viewDistances[i];
+		void CycleDistanceForwards(int[] viewDists) {		
+			for (int i = 0; i < viewDists.Length; i++) {
+				int dist = viewDists[i];
 				if (dist > game.UserViewDistance) {
 					game.SetViewDistance(dist, true); return;
 				}
 			}
-			game.SetViewDistance(viewDistances[0], true);
+			game.SetViewDistance(viewDists[0], true);
 		}
 		
-		void CycleDistanceBackwards() {
-			for (int i = viewDistances.Length - 1; i >= 0; i--) {
-				int dist = viewDistances[i];
+		void CycleDistanceBackwards(int[] viewDists) {
+			for (int i = viewDists.Length - 1; i >= 0; i--) {
+				int dist = viewDists[i];
 				if (dist < game.UserViewDistance) {
 					game.SetViewDistance(dist, true); return;
 				}
 			}
-			game.SetViewDistance(viewDistances[viewDistances.Length - 1], true);
+			game.SetViewDistance(viewDists[viewDists.Length - 1], true);
 		}
 		
 		float fovIndex = -1;

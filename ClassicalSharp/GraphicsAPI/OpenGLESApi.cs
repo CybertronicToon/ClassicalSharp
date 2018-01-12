@@ -12,13 +12,13 @@ namespace ClassicalSharp.GraphicsAPI {
 	/// <summary> Implements IGraphicsAPI using OpenGL ES 1.1 </summary>
 	public unsafe class OpenGLESApi : IGraphicsApi {
 		
-		All[] modeMappings;
 		public OpenGLESApi() {
 			InitFields();
 			int texDims;
 			GL.GetInteger(All.MaxTextureSize, &texDims);
 			textureDims = texDims;
 			base.InitDynamicBuffers();
+			// TODO: Support mipmaps
 			
 			setupBatchFuncCol4b = SetupVbPos3fCol4b;
 			setupBatchFuncTex2fCol4b = SetupVbPos3fTex2fCol4b;
@@ -40,7 +40,11 @@ namespace ClassicalSharp.GraphicsAPI {
 			GL.BlendFunc(blendFuncs[(int)srcFunc], blendFuncs[(int)dstFunc]);
 		}
 		
-		public override bool Fog { set { Toggle(All.Fog, value); } }
+		bool fogEnable;
+		public override bool Fog {
+			get { return fogEnable; }
+			set { fogEnable = value; Toggle(All.Fog, value); } 
+		}
 		
 		FastColour lastFogCol = FastColour.Black;
 		public override void SetFogColour(FastColour col) {
@@ -134,9 +138,9 @@ namespace ClassicalSharp.GraphicsAPI {
 			GL.BindTexture(All.Texture2D, texture);
 		}
 		
-		public override void UpdateTexturePart(int texId, int texX, int texY, FastBitmap part) {
+		public override void UpdateTexturePart(int texId, int x, int y, FastBitmap part) {
 			GL.BindTexture(All.Texture2D, texId);
-			GL.TexSubImage2D(All.Texture2D, 0, texX, texY, part.Width, part.Height,
+			GL.TexSubImage2D(All.Texture2D, 0, x, y, part.Width, part.Height,
 				All.BgraExt, All.UnsignedByte, part.Scan0);
 		}
 		
@@ -155,13 +159,6 @@ namespace ClassicalSharp.GraphicsAPI {
 			int id = GenAndBind(All.ArrayBuffer);
 			int sizeInBytes = maxVertices * strideSizes[(int)format];
 			GL.BufferData(All.ArrayBuffer, new IntPtr(sizeInBytes), IntPtr.Zero, All.DynamicDraw);
-			return id;
-		}
-		
-		public override int CreateVb<T>(T[] vertices, VertexFormat format, int count) {
-			int id = GenAndBind(All.ArrayBuffer);
-			int sizeInBytes = count * strideSizes[(int)format];
-			GL.BufferData(All.ArrayBuffer, new IntPtr(sizeInBytes), vertices, All.StaticDraw);
 			return id;
 		}
 		
@@ -187,7 +184,7 @@ namespace ClassicalSharp.GraphicsAPI {
 		}
 		
 		int batchStride;		
-		public override void SetDynamicVbData<T>(int id, T[] vertices, int count) {
+		public override void SetDynamicVbData(int id, IntPtr vertices, int count) {
 			GL.BindBuffer(All.ArrayBuffer, id);
 			GL.BufferSubData(All.ArrayBuffer, IntPtr.Zero, 
 			                 new IntPtr(count * batchStride), vertices);
@@ -233,16 +230,21 @@ namespace ClassicalSharp.GraphicsAPI {
 		}
 		
 		const All indexType = All.UnsignedShort;
-		public override void DrawVb(DrawMode mode, int startVertex, int verticesCount) {
+		public override void DrawVb_Lines(int verticesCount) {
 			setupBatchFunc();
-			GL.DrawArrays(modeMappings[(int)mode], startVertex, verticesCount);
+			GL.DrawArrays(All.Lines, 0, verticesCount);
 		}		
 		
-		public override void DrawIndexedVb(DrawMode mode, int indicesCount, int startIndex) {
+		public override void DrawVb_IndexedTris(int indicesCount, int startIndex) {
 			setupBatchFunc();
-			GL.DrawElements(modeMappings[(int)mode], indicesCount, indexType, new IntPtr(startIndex * 2));
+			GL.DrawElements(All.Triangles, indicesCount, indexType, new IntPtr(startIndex * 2));
 		}
-
+		
+		public override void DrawVb_IndexedTris(int indicesCount) {
+			setupBatchFunc();
+			GL.DrawElements(All.Triangles, indicesCount, indexType, IntPtr.Zero);
+		}
+		
 		internal override void DrawIndexedVb_TrisT2fC4b(int indicesCount, int startIndex) {
 			GL.VertexPointer(3, All.Float, 24, zero);
 			GL.ColorPointer(4, All.UnsignedByte, 24, twelve);
@@ -290,19 +292,6 @@ namespace ClassicalSharp.GraphicsAPI {
 		
 		public override void LoadIdentityMatrix() {
 			GL.LoadIdentity();
-		}
-		
-		public override void PushMatrix() {
-			GL.PushMatrix();
-		}
-		
-		public override void PopMatrix() {
-			GL.PopMatrix();
-		}
-		
-		public override void MultiplyMatrix(ref Matrix4 matrix) {
-			fixed(Single* ptr = &matrix.Row0.X)
-				GL.MultMatrix(ptr);
 		}
 		
 		#endregion
@@ -368,8 +357,6 @@ namespace ClassicalSharp.GraphicsAPI {
 		}
 		
 		void InitFields() {
-			modeMappings = new All[2];
-			modeMappings[0] = All.Triangles; modeMappings[1] = All.Lines;
 			blendFuncs = new All[6];
 			blendFuncs[0] = All.Zero; blendFuncs[1] = All.One;
 			blendFuncs[2] = All.SrcAlpha; blendFuncs[3] = All.OneMinusSrcAlpha;

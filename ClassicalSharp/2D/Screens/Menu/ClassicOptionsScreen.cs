@@ -7,70 +7,94 @@ using ClassicalSharp.Singleplayer;
 namespace ClassicalSharp.Gui.Screens {
 	public class ClassicOptionsScreen : MenuOptionsScreen {
 		
+		enum ViewDist { TINY, SHORT, NORMAL, FAR }
+		
 		public ClassicOptionsScreen(Game game) : base(game) {
 		}
 		
 		public override void Init() {
 			base.Init();
-			IServerConnection network = game.Server;
-			
-			widgets = new Widget[] {
-				// Column 1
-				MakeBool(-1, -150, "Music", OptionsKey.UseMusic,
-				         OnWidgetClick, g => g.UseMusic,
-				         (g, v) => { g.UseMusic = v; g.AudioPlayer.SetMusic(g.UseMusic); }),
-				
-				MakeBool(-1, -100, "Invert mouse", OptionsKey.InvertMouse,
-				         OnWidgetClick, g => g.InvertMouse, (g, v) => g.InvertMouse = v),
-				
-				MakeOpt(-1, -50, "View distance", OnWidgetClick,
-				        g => g.ViewDistance.ToString(),
-				        (g, v) => g.SetViewDistance(Int32.Parse(v), true)),
-				
-				!network.IsSinglePlayer ? null :
-					MakeBool(-1, 0, "Block physics", OptionsKey.SingleplayerPhysics, OnWidgetClick,
-					         g => ((SinglePlayerServer)network).physics.Enabled,
-					         (g, v) => ((SinglePlayerServer)network).physics.Enabled = v),
-				
-				// Column 2
-				MakeBool(1, -150, "Sound", OptionsKey.UseSound,
-				         OnWidgetClick, g => g.UseSound,
-				         (g, v) => { g.UseSound = v; g.AudioPlayer.SetSound(g.UseSound); }),
-				
-				MakeBool(1, -100, "Show FPS", OptionsKey.ShowFPS,
-				         OnWidgetClick, g => g.ShowFPS, (g, v) => g.ShowFPS = v),
-				
-				MakeBool(1, -50, "View bobbing", OptionsKey.ViewBobbing,
-				         OnWidgetClick, g => g.ViewBobbing, (g, v) => g.ViewBobbing = v),
-				
-				MakeOpt(1, 0, "FPS mode", OnWidgetClick,
-				        g => g.FpsLimit.ToString(),
-				        (g, v) => { object raw = Enum.Parse(typeof(FpsLimitMethod), v);
-				        	g.SetFpsLimitMethod((FpsLimitMethod)raw);
-				        	Options.Set(OptionsKey.FpsLimit, v); }),
-				
-				!game.ClassicHacks ? null :
-					MakeBool(0, 60, "Hacks enabled", OptionsKey.HacksEnabled,
-					         OnWidgetClick, g => g.LocalPlayer.Hacks.Enabled,
-					         (g, v) => { g.LocalPlayer.Hacks.Enabled = v;
-					         	g.LocalPlayer.CheckHacksConsistency(); }),
-				
-				ButtonWidget.Create(game, 401, 41, "Controls", titleFont,
-				                    LeftOnly((g, w) => g.Gui.SetNewScreen(new ClassicKeyBindingsScreen(g))))
-					.SetLocation(Anchor.Centre, Anchor.BottomOrRight, 0, 95),
-				
-				MakeBack(401, "Done", 22, titleFont, (g, w) => g.Gui.SetNewScreen(new PauseScreen(g))),
-				null, null,
-			};
+			ContextRecreated();
 			MakeValidators();
 		}
+		
+		protected override void ContextRecreated() {
+			bool multi = !game.Server.IsSinglePlayer, hacks = game.ClassicHacks;
+			ClickHandler onClick = OnWidgetClick;
+			widgets = new Widget[] {
+				MakeOpt(-1, -150, "Music",                      onClick, GetMusic,    SetMusic),
+				MakeOpt(-1, -100, "Invert mouse",               onClick, GetInvert,   SetInvert),
+				MakeOpt(-1, -50, "Render distance",             onClick, GetViewDist, SetViewDist),
+				multi ? null : MakeOpt(-1, 0, "Block physics",  onClick, GetPhysics,  SetPhysics),
+				
+				MakeOpt(1, -150, "Sound",                       onClick, GetSounds,   SetSounds),
+				MakeOpt(1, -100, "Show FPS",                    onClick, GetShowFPS,  SetShowFPS),
+				MakeOpt(1, -50, "View bobbing",                 onClick, GetViewBob,  SetViewBob),
+				MakeOpt(1, 0, "FPS mode",                       onClick, GetFPS,      SetFPS),
+				!hacks ? null : MakeOpt(0, 60, "Hacks enabled", onClick, GetHacks,    SetHacks),
+				
+				ButtonWidget.Create(game, 400, "Controls...", titleFont, LeftOnly(SwitchClassic))
+					.SetLocation(Anchor.Centre, Anchor.BottomOrRight, 0, 95),
+				MakeBack(400, "Done", 25, titleFont, SwitchPause),
+				null, null,
+			};
+		}
+		
+		static string GetMusic(Game g) { return GetBool(g.MusicVolume > 0); }
+		static void SetMusic(Game g, string v) {
+			g.MusicVolume = v == "ON" ? 100 : 0;
+			g.AudioPlayer.SetMusic(g.MusicVolume);
+			Options.Set(OptionsKey.MusicVolume, g.MusicVolume);
+		}
+		
+		static string GetInvert(Game g) { return GetBool(g.InvertMouse); }
+		static void SetInvert(Game g, string v) { g.InvertMouse = SetBool(v, OptionsKey.InvertMouse); }
+		
+		static string GetViewDist(Game g) { 
+			if (g.ViewDistance >= 512) return ViewDist.FAR.ToString();
+			if (g.ViewDistance >= 128) return ViewDist.NORMAL.ToString();
+			if (g.ViewDistance >= 32 ) return ViewDist.SHORT.ToString();
+			
+			return ViewDist.TINY.ToString();
+		}
+		static void SetViewDist(Game g, string v) {
+			ViewDist raw = (ViewDist)Enum.Parse(typeof(ViewDist), v);
+			int dist = raw == ViewDist.FAR ? 512 : (raw == ViewDist.NORMAL ? 128 : (raw == ViewDist.SHORT ? 32 : 8));
+			g.SetViewDistance(dist, true); 
+		}
+		
+		static string GetPhysics(Game g) { return GetBool(((SinglePlayerServer)g.Server).physics.Enabled); }
+		static void SetPhysics(Game g, string v) {
+			((SinglePlayerServer)g.Server).physics.Enabled = SetBool(v, OptionsKey.BlockPhysics);
+		}
+		
+		static string GetSounds(Game g) { return GetBool(g.SoundsVolume > 0); }
+		static void SetSounds(Game g, string v) {
+			g.SoundsVolume = v == "ON" ? 100 : 0;
+			g.AudioPlayer.SetSounds(g.SoundsVolume);
+			Options.Set(OptionsKey.SoundsVolume, g.SoundsVolume);
+		}
+		
+		static string GetShowFPS(Game g) { return GetBool(g.ShowFPS); }
+		static void SetShowFPS(Game g, string v) { g.ShowFPS = SetBool(v, OptionsKey.ShowFPS); }
+		
+		static string GetViewBob(Game g) { return GetBool(g.ViewBobbing); }
+		static void SetViewBob(Game g, string v) { g.ViewBobbing = SetBool(v, OptionsKey.ViewBobbing); }
+		
+		static string GetHacks(Game g) { return GetBool(g.LocalPlayer.Hacks.Enabled); }
+		static void SetHacks(Game g, string v) {
+			g.LocalPlayer.Hacks.Enabled = SetBool(v, OptionsKey.HacksOn);
+			g.LocalPlayer.CheckHacksConsistency();
+		}
+		
+		static void SwitchClassic(Game g, Widget w) { g.Gui.SetNewScreen(new ClassicKeyBindingsScreen(g)); }
 		
 		void MakeValidators() {
 			IServerConnection network = game.Server;
 			validators = new MenuInputValidator[] {
 				new BooleanValidator(),
 				new BooleanValidator(),
-				new IntegerValidator(16, 4096),
+				new EnumValidator(typeof(ViewDist)),
 				network.IsSinglePlayer ? new BooleanValidator() : null,
 				
 				new BooleanValidator(),

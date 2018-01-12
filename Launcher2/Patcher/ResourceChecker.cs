@@ -27,21 +27,19 @@ namespace Launcher.Patcher {
 		}
 		
 		void CheckTexturePack() {
-			ushort flags = 0;
-			foreach (var entry in ResourceList.Files)
-				flags |= entry.Value;
+			byte flags = ResourceList.GetFetchFlags();
 			if (flags != 0) AllResourcesExist = false;
 			
-			if ((flags & ResourceList.cMask) != 0) {
+			if ((flags & ResourceList.mask_classic) != 0) {
 				DownloadSize += 291/1024f; ResourcesCount++;
 			}
-			if ((flags & ResourceList.mMask) != 0) {
+			if ((flags & ResourceList.mask_modern) != 0) {
 				DownloadSize += 4621/1024f; ResourcesCount++;
 			}
-			if ((flags & ResourceList.tMask) != 0) {
+			if ((flags & ResourceList.mask_terrain) != 0) {
 				DownloadSize += 7/1024f; ResourcesCount++;
 			}
-			if ((flags & ResourceList.gMask) != 0) {
+			if ((flags & ResourceList.mask_gui) != 0) {
 				DownloadSize += 21/1024f; ResourcesCount++;
 			}
 		}
@@ -77,16 +75,22 @@ namespace Launcher.Patcher {
 		
 		void CheckDefaultZip(string path) {
 			ZipReader reader = new ZipReader();
-			reader.ShouldProcessZipEntry = ShouldProcessZipEntry;
+			reader.SelectZipEntry = SelectZipEntry;
 			reader.ProcessZipEntry = ProcessZipEntry;
 			
 			using (Stream src = new FileStream(path, FileMode.Open, FileAccess.Read))
 				reader.Extract(src);
 		}
 
-		bool ShouldProcessZipEntry(string filename) {			
+		bool SelectZipEntry(string filename) {
 			string name = ResourceList.GetFile(filename);
-			ResourceList.Files.Remove(name);
+			for (int i = 0; i < ResourceList.Filenames.Length; i++) {
+				if (ResourceList.FilesExist[i]) continue;
+				if (name != ResourceList.Filenames[i]) continue;
+				
+				ResourceList.FilesExist[i] = true;
+				break;
+			}
 			return false;
 		}
 		

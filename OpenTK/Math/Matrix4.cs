@@ -60,55 +60,7 @@ namespace OpenTK {
 			Row3 = new Vector4(m30, m31, m32, m33);
 		}
 
-		/// <summary> Gets or sets the value at row 1, column 1 of this instance. </summary>
-		public float M11 { get { return Row0.X; } set { Row0.X = value; } }
-
-		/// <summary> Gets or sets the value at row 1, column 2 of this instance. </summary>
-		public float M12 { get { return Row0.Y; } set { Row0.Y = value; } }
-
-		/// <summary> Gets or sets the value at row 1, column 3 of this instance. </summary>
-		public float M13 { get { return Row0.Z; } set { Row0.Z = value; } }
-
-		/// <summary> Gets or sets the value at row 1, column 4 of this instance. </summary>
-		public float M14 { get { return Row0.W; } set { Row0.W = value; } }
-
-		/// <summary> Gets or sets the value at row 2, column 1 of this instance. </summary>
-		public float M21 { get { return Row1.X; } set { Row1.X = value; } }
-
-		/// <summary> Gets or sets the value at row 2, column 2 of this instance. </summary>
-		public float M22 { get { return Row1.Y; } set { Row1.Y = value; } }
-
-		/// <summary> Gets or sets the value at row 2, column 3 of this instance. </summary>
-		public float M23 { get { return Row1.Z; } set { Row1.Z = value; } }
-
-		/// <summary> Gets or sets the value at row 2, column 4 of this instance. </summary>
-		public float M24 { get { return Row1.W; } set { Row1.W = value; } }
-
-		/// <summary> Gets or sets the value at row 3, column 1 of this instance. </summary>
-		public float M31 { get { return Row2.X; } set { Row2.X = value; } }
-
-		/// <summary> Gets or sets the value at row 3, column 2 of this instance. </summary>
-		public float M32 { get { return Row2.Y; } set { Row2.Y = value; } }
-
-		/// <summary> Gets or sets the value at row 3, column 3 of this instance. </summary>
-		public float M33 { get { return Row2.Z; } set { Row2.Z = value; } }
-
-		/// <summary> Gets or sets the value at row 3, column 4 of this instance. </summary>
-		public float M34 { get { return Row2.W; } set { Row2.W = value; } }
-
-		/// <summary> Gets or sets the value at row 4, column 1 of this instance. </summary>
-		public float M41 { get { return Row3.X; } set { Row3.X = value; } }
-
-		/// <summary> Gets or sets the value at row 4, column 2 of this instance. </summary>
-		public float M42 { get { return Row3.Y; } set { Row3.Y = value; } }
-
-		/// <summary> Gets or sets the value at row 4, column 3 of this instance. </summary>
-		public float M43 { get { return Row3.Z; } set { Row3.Z = value; } }
-
-		/// <summary> Gets or sets the value at row 4, column 4 of this instance. </summary>
-		public float M44 { get { return Row3.W; } set { Row3.W = value; } }
-
-		public static void RotateX(float angle, out Matrix4 result) {
+		public static void RotateX(out Matrix4 result, float angle) {
 			float cos = (float)Math.Cos(angle);
 			float sin = (float)Math.Sin(angle);
 
@@ -118,13 +70,7 @@ namespace OpenTK {
 			result.Row3 = Vector4.UnitW;
 		}
 
-		public static Matrix4 RotateX(float angle) {
-			Matrix4 result;
-			RotateX(angle, out result);
-			return result;
-		}
-
-		public static void RotateY(float angle, out Matrix4 result) {
+		public static void RotateY(out Matrix4 result, float angle) {
 			float cos = (float)Math.Cos(angle);
 			float sin = (float)Math.Sin(angle);
 
@@ -134,13 +80,7 @@ namespace OpenTK {
 			result.Row3 = Vector4.UnitW;
 		}
 
-		public static Matrix4 RotateY(float angle) {
-			Matrix4 result;
-			RotateY(angle, out result);
-			return result;
-		}
-
-		public static void RotateZ(float angle, out Matrix4 result) {
+		public static void RotateZ(out Matrix4 result, float angle) {
 			float cos = (float)System.Math.Cos(angle);
 			float sin = (float)System.Math.Sin(angle);
 
@@ -150,42 +90,16 @@ namespace OpenTK {
 			result.Row3 = Vector4.UnitW;
 		}
 
-		public static Matrix4 RotateZ(float angle) {
-			Matrix4 result;
-			RotateZ(angle, out result);
-			return result;
-		}
-
-		public static void Translate(float x, float y, float z, out Matrix4 result) {
+		public static void Translate(out Matrix4 result, float x, float y, float z) {
 			result = Identity;
 			result.Row3 = new Vector4(x, y, z, 1);
-		}
-
-		public static void Translate(ref Vector3 vector, out Matrix4 result) {
-			result = Identity;
-			result.Row3 = new Vector4(vector.X, vector.Y, vector.Z, 1);
-		}
-
-		public static Matrix4 Translate(float x, float y, float z) {
-			Matrix4 result = Identity;
-			result.Row3 = new Vector4(x, y, z, 1);
-			return result;
-		}
-
-		public static Matrix4 Translate(Vector3 vector) {
-			Matrix4 result = Identity;
-			result.Row3 = new Vector4(vector.X, vector.Y, vector.Z, 1);
-			return result;
-		}
-
-		public static void CreateOrthographic(float width, float height, float zNear, float zFar, out Matrix4 result) {
-			CreateOrthographicOffCenter(-width / 2, width / 2, -height / 2, height / 2, zNear, zFar, out result);
 		}
 		
-		public static Matrix4 CreateOrthographic(float width, float height, float zNear, float zFar) {
-			Matrix4 result;
-			CreateOrthographicOffCenter(-width / 2, width / 2, -height / 2, height / 2, zNear, zFar, out result);
-			return result;
+		public static void Scale(out Matrix4 result, float x, float y, float z) {
+			result.Row0 = Vector4.UnitX; result.Row0.X *= x;
+			result.Row1 = Vector4.UnitY; result.Row1.Y *= y;
+			result.Row2 = Vector4.UnitZ; result.Row2.Z *= z;
+			result.Row3 = Vector4.UnitW;
 		}
 
 		public static void CreateOrthographicOffCenter(float left, float right, float bottom, float top, float zNear, float zFar, out Matrix4 result) {
@@ -195,20 +109,14 @@ namespace OpenTK {
 			float invTB = 1 / (top - bottom);
 			float invFN = 1 / (zFar - zNear);
 
-			result.M11 = 2 * invRL;
-			result.M22 = 2 * invTB;
-			result.M33 = -2 * invFN;
+			result.Row0.X = 2 * invRL;
+			result.Row1.Y = 2 * invTB;
+			result.Row2.Z = -2 * invFN;
 
-			result.M41 = -(right + left) * invRL;
-			result.M42 = -(top + bottom) * invTB;
-			result.M43 = -(zFar + zNear) * invFN;
-			result.M44 = 1;
-		}
-
-		public static Matrix4 CreateOrthographicOffCenter(float left, float right, float bottom, float top, float zNear, float zFar) {
-			Matrix4 result;
-			CreateOrthographicOffCenter(left, right, bottom, top, zNear, zFar, out result);
-			return result;
+			result.Row3.X = -(right + left) * invRL;
+			result.Row3.Y = -(top + bottom) * invTB;
+			result.Row3.Z = -(zFar + zNear) * invFN;
+			result.Row3.W = 1;
 		}
 		
 		public static void CreatePerspectiveFieldOfView(float fovy, float aspect, float zNear, float zFar, out Matrix4 result) {
@@ -229,12 +137,6 @@ namespace OpenTK {
 			float xMax = yMax * aspect;
 
 			CreatePerspectiveOffCenter(xMin, xMax, yMin, yMax, zNear, zFar, out result);
-		}
-
-		public static Matrix4 CreatePerspectiveFieldOfView(float fovy, float aspect, float zNear, float zFar) {
-			Matrix4 result;
-			CreatePerspectiveFieldOfView(fovy, aspect, zNear, zFar, out result);
-			return result;
 		}
 		
 		public static void CreatePerspectiveOffCenter(float left, float right, float bottom, float top, float zNear, float zFar, out Matrix4 result) {
@@ -257,31 +159,8 @@ namespace OpenTK {
 			                     a, b, c, -1,
 			                     0, 0, d,  0);
 		}
-		
-		public static Matrix4 CreatePerspectiveOffCenter(float left, float right, float bottom, float top, float zNear, float zFar) {
-			Matrix4 result;
-			CreatePerspectiveOffCenter(left, right, bottom, top, zNear, zFar, out result);
-			return result;
-		}
 
-		public static Matrix4 Scale(float scale) {
-			return Scale(scale, scale, scale);
-		}
-
-		public static Matrix4 Scale(Vector3 scale) {
-			return Scale(scale.X, scale.Y, scale.Z);
-		}
-
-		public static Matrix4 Scale(float x, float y, float z) {
-			Matrix4 result;
-			result.Row0 = Vector4.UnitX; result.Row0.X *= x;
-			result.Row1 = Vector4.UnitY; result.Row1.Y *= y;
-			result.Row2 = Vector4.UnitZ; result.Row2.Z *= z;
-			result.Row3 = Vector4.UnitW;
-			return result;
-		}
-
-		public static Matrix4 LookAt(Vector3 eye, Vector3 target, Vector3 up) {
+		public static void LookAt(Vector3 eye, Vector3 target, Vector3 up, out Matrix4 result) {
 			Vector3 z = Vector3.Normalize(eye - target);
 			Vector3 x = Vector3.Normalize(Vector3.Cross(up, z));
 			Vector3 y = Vector3.Normalize(Vector3.Cross(z, x));
@@ -290,19 +169,13 @@ namespace OpenTK {
 			                          new Vector4(x.Y, y.Y, z.Y, 0.0f),
 			                          new Vector4(x.Z, y.Z, z.Z, 0.0f),
 			                          Vector4.UnitW);
-
-			Matrix4 trans = Matrix4.Translate(-eye);
-
-			return trans * rot;
-		}
-		
-		public static Matrix4 Mult(Matrix4 left, Matrix4 right) {
-			Matrix4 result;
-			Mult(ref left, ref right, out result);
-			return result;
+			
+			Matrix4 trans;
+			Translate(out trans, -eye.X, -eye.Y, -eye.Z);
+			Mult(out result, ref trans, ref rot);
 		}
 
-		public static void Mult(ref Matrix4 left, ref Matrix4 right, out Matrix4 result) {
+		public static void Mult(out Matrix4 result, ref Matrix4 left, ref Matrix4 right) {
 			// Originally from http://www.edais.co.uk/blog/?p=27
 			float lM11 = left.Row0.X, lM12 = left.Row0.Y, lM13 = left.Row0.Z, lM14 = left.Row0.W,
 			lM21 = left.Row1.X, lM22 = left.Row1.Y, lM23 = left.Row1.Z, lM24 = left.Row1.W,
@@ -335,20 +208,12 @@ namespace OpenTK {
 			result.Row3.W = (((lM41 * rM14) + (lM42 * rM24)) + (lM43 * rM34)) + (lM44 * rM44);
 		}
 
-		public static Matrix4 operator * (Matrix4 left, Matrix4 right) {
-			return Matrix4.Mult(left, right);
-		}
-
 		public static bool operator == (Matrix4 left, Matrix4 right) {
 			return left.Equals(right);
 		}
 		
 		public static bool operator != (Matrix4 left, Matrix4 right) {
 			return !left.Equals(right);
-		}
-
-		public override string ToString() {
-			return String.Format("{0}\n{1}\n{2}\n{3}", Row0, Row1, Row2, Row3);
 		}
 
 		public override int GetHashCode() {
